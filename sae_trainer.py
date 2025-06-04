@@ -42,6 +42,9 @@ def train_sparse_autoencoder(
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     LLMの活性化からSAEを学習する
+    -SparseAutoencoderのインスタンス
+    -学習損失、再構成損失、スパース性損失のリスト
+    -SAEの特徴次元、入力次元
     """
     device = torch.device("mps" if torch.mps.is_available() else "cpu")
     print(f"Using device: {device}")
