@@ -24,6 +24,8 @@ def get_llm_activations_residual_stream(model, tokenizer, texts, layer_index, ma
     device = torch.device("mps" if torch.mps.is_available() else "cpu")
     model.eval()
     model.to(device)
+    
+    all_token_activations_dict = {}
     all_token_activations = []
 
     if tokenizer.pad_token is None:
@@ -53,8 +55,9 @@ def get_llm_activations_residual_stream(model, tokenizer, texts, layer_index, ma
 
         if actual_token_activations.shape[0] > 0:
             all_token_activations.append(actual_token_activations)
+            all_token_activations_dict[text] = actual_token_activations
     if not all_token_activations:
         print("No valid token activations found. Returning empty tensor.")
         return torch.empty(0, layer_activations.shape[-1], device=device)
     
-    return torch.cat(all_token_activations, dim=0)
+    return torch.cat(all_token_activations, dim=0), all_token_activations_dict

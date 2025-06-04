@@ -17,16 +17,16 @@ def extract_activations(
     target_layer_idx: int,
     num_samples: int,
     max_length: int = DEFAULT_SEQ_LEN
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, dict]:
     """LLMの活性化を抽出する"""
     
     tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
     llm_model = AutoModel.from_pretrained(llm_model_name)
     training_texts = [texts[i % len(texts)] for i in range(num_samples)]
-    activations = get_llm_activations_residual_stream(
+    activations, activation_dict = get_llm_activations_residual_stream(
         llm_model, tokenizer, training_texts, layer_index=target_layer_idx, max_length=max_length
     )
-    return activations
+    return activations, activation_dict
 
 def create_data_loader(activations: torch.Tensor, batch_size: int) -> torch.utils.data.DataLoader:
     """活性化テンソルからDataLoaderを作成"""

@@ -16,7 +16,7 @@ if __name__ == "__main__":
     num_epochs = 200  # 訓練エポック数
     sae_l1_coeff = 1e-4 # スパース性の度合いを調整する係数
 
-    activations = extract_activations(
+    activations, activations_dict = extract_activations(
         llm_model_name,
         texts,
         target_layer_idx,
