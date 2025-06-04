@@ -1,4 +1,5 @@
 from sae_trainer import extract_activations, create_data_loader, train_sparse_autoencoder
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     
@@ -26,12 +27,17 @@ if __name__ == "__main__":
         print("No activations were extracted. Exiting.")
     else:
         data_loader = create_data_loader(activations, batch_size)
-        sae_model, training_losses, reconstruction_losses, sparsity_losses = train_sparse_autoencoder(
+        sae_model, training_losses, reconstruction_losses, sparsity_losses, sae_feature_dim, input_dim = train_sparse_autoencoder(
             activations,
             data_loader,
             num_epochs=num_epochs,
             sae_l1_coeff=sae_l1_coeff
         )
         
-    
-    
+    encoder_weights = sae_model.encoder.weight.data.cpu().numpy()
+    plt.figure(figsize=(10, 8))
+    num_features_to_show = min(32, sae_feature_dim) 
+    num_input_dims_to_show = min(100, input_dim) 
+    plt.imshow(encoder_weights[:num_features_to_show, :num_input_dims_to_show], aspect='auto', cmap='viridis')
+    plt.colorbar(label='Weight Value'); plt.title(f'Encoder Weights (First {num_features_to_show} Feats vs First {num_input_dims_to_show} In Dims)')
+    plt.xlabel('Input LLM Activation Dimension Index'); plt.ylabel('SAE Feature Index'); plt.show()      

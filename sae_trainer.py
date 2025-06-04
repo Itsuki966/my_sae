@@ -39,7 +39,7 @@ def train_sparse_autoencoder(
     data_loader: torch.utils.data.DataLoader,
     num_epochs: int = 200,
     sae_l1_coeff: float = 1e-4
-) -> Tuple[SparseAutoencoder, list, list, list]:
+) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     LLMの活性化からSAEを学習する
     """
@@ -96,4 +96,4 @@ def train_sparse_autoencoder(
                 print(f"Evaluated features shape: {features_eval.shape}")
 
     print("Training complete.")
-    return sae_model, training_losses, reconstruction_losses, sparsity_losses
+    return sae_model, training_losses, reconstruction_losses, sparsity_losses, sae_feature_dim, input_dim
