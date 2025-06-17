@@ -38,7 +38,8 @@ def train_sparse_autoencoder(
     activations: torch.Tensor,
     data_loader: torch.utils.data.DataLoader,
     num_epochs: int = 200,
-    sae_l1_coeff: float = 1e-4
+    sae_l1_coeff: float = 1e-4,
+    llm_model_name: str = ""
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     LLMの活性化からSAEを学習する
@@ -56,11 +57,14 @@ def train_sparse_autoencoder(
 
     input_dim = activations.shape[1]
     sae_feature_dim = int(input_dim * SAE_FEATURE_RATIO)
-    print(f"Input dimension: {input_dim}, SAE feature dimension: {sae_feature_dim}")
+    print("----------LLM・SAEの情報----------")
+    print(f"LLMモデル名: {llm_model_name}")
+    print(f"LLMの活性化ベクトルの次元数: {input_dim}, SAEの特徴次元: {sae_feature_dim}")
+    print("----------------------------------")
     sae_model = SparseAutoencoder(input_dim, sae_feature_dim, l1_coeff=sae_l1_coeff).to(device)
     optimizer = optim.Adam(sae_model.parameters(), lr=LEARNING_RATE)
 
-    
+    print("")
     print(f"Starting SAE training for {num_epochs} epochs...")
 
     training_losses, reconstruction_losses, sparsity_losses = [], [], []
