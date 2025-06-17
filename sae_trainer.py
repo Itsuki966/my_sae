@@ -8,7 +8,7 @@ from activation_utils import get_llm_activations_residual_stream
 
 # 定数
 DEFAULT_SEQ_LEN = 128   # デフォルトのシーケンス長
-SAE_FEATURE_RATIO = 4   # この値を大きくすると解釈しやすい表現が得られるが、学習コストが上がる
+SAE_FEATURE_RATIO = 1.1   # この値を大きくすると解釈しやすい表現が得られるが、学習コストが上がる
 LEARNING_RATE = 1e-3    # SAEを学習する際の学習率
 
 def extract_activations(
@@ -55,7 +55,8 @@ def train_sparse_autoencoder(
         return
 
     input_dim = activations.shape[1]
-    sae_feature_dim = input_dim * SAE_FEATURE_RATIO
+    sae_feature_dim = int(input_dim * SAE_FEATURE_RATIO)
+    print(f"Input dimension: {input_dim}, SAE feature dimension: {sae_feature_dim}")
     sae_model = SparseAutoencoder(input_dim, sae_feature_dim, l1_coeff=sae_l1_coeff).to(device)
     optimizer = optim.Adam(sae_model.parameters(), lr=LEARNING_RATE)
 
