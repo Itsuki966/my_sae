@@ -20,6 +20,7 @@ def get_llm_activations(model, tokenizer, texts, layer_index=-1):
             all_activations.append(cls_activations)
     return torch.cat(all_activations, dim=0)
 
+# Residual Streamから活性化を取得
 def get_llm_activations_residual_stream(model, tokenizer, texts, layer_index, max_length=256):
     device = torch.device("mps" if torch.mps.is_available() else "cpu")
     model.eval()

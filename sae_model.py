@@ -5,6 +5,7 @@ from transformers import AutoModel, AutoTokenizer
 import matplotlib.pyplot as plt
 import numpy as np
 
+# SAEのモデルを定義
 class SparseAutoencoder(nn.Module):
     def __init__(self, input_dim, feature_dim, l1_coeff=1e-5):
         super(SparseAutoencoder, self).__init__()
