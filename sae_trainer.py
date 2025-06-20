@@ -64,7 +64,8 @@ def train_sparse_autoencoder(
     data_loader: torch.utils.data.DataLoader,
     num_epochs: int = 200,
     sae_l1_coeff: float = 1e-4,
-    llm_model_name: str = ""
+    llm_model_name: str = "",
+    layer_idx: int = -1
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     特定の層のLLMの活性化からSAEを学習する
@@ -84,13 +85,14 @@ def train_sparse_autoencoder(
     sae_feature_dim = int(input_dim * SAE_FEATURE_RATIO)
     print("----------LLM・SAEの情報----------")
     print(f"LLMモデル名: {llm_model_name}")
+    print(f"対象層インデックス: {layer_idx + 1}")
     print(f"LLMの活性化ベクトルの次元数: {input_dim}, SAEの特徴次元: {sae_feature_dim}")
     print("----------------------------------")
     sae_model = SparseAutoencoder(input_dim, sae_feature_dim, l1_coeff=sae_l1_coeff).to(device)
     optimizer = optim.Adam(sae_model.parameters(), lr=LEARNING_RATE)
 
     print("")
-    print(f"Starting SAE training for {num_epochs} epochs...")
+    print(f"Starting SAE training for layer {layer_idx + 1} for {num_epochs} epochs...")
 
     training_losses, reconstruction_losses, sparsity_losses = [], [], []
 
@@ -128,5 +130,40 @@ def train_sparse_autoencoder(
                 _, features_eval = sae_model(activations.to(device))
                 print(f"Evaluated features shape: {features_eval.shape}")
 
-    print("Training complete.")
+    print(f"Training complete for layer {layer_idx + 1}.")
     return sae_model, training_losses, reconstruction_losses, sparsity_losses, sae_feature_dim, input_dim
+
+def train_all_layer_saes(
+    llm_model_name: str,
+    texts: List[str],
+    num_samples: int,
+    batch_size: int = 64,
+    num_epochs: int =200,
+    sae_l1_coeff: float = 1e-4
+) -> Dict[int, SparseAutoencoder]:
+    """全ての層に対してSAEを学習する"""
+    
+    # 全ての層から活性を取得
+    all_layer_activations = extract_all_layer_activations(
+        llm_model_name, texts, num_samples
+    )
+    
+    # 各層のSAEを格納する辞書
+    layer_saes = {}
+    
+    # 各層ごとにSAEを学習
+    for layer_idx, activations in all_layer_activations.items():
+        print("")
+        print(f"Training SAE for layer {layer_idx + 1}...")
+        
+        data_loader = create_data_loader(activations, batch_size)
+        sae_model, training_loss, recon_loss, sparse_loss, feature_dim, input_dim = train_sparse_autoencoder(
+            activations, data_loader,
+            num_epochs=num_epochs,
+            sae_l1_coeff=sae_l1_coeff,
+            llm_model_name=llm_model_name,
+            layer_idx=layer_idx
+        )
+        layer_saes[layer_idx] = sae_model
+                
+    return layer_saes
