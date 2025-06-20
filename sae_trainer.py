@@ -50,7 +50,9 @@ def extract_all_layer_activations(
             llm_model, tokenizer, texts, layer_index=layer_idx, max_length=max_length
         )
         all_layer_activations[layer_idx] = activations
-
+        print(f"Layer {layer_idx + 1} activations shape: {activations.shape}")
+    
+    print("All layer activations extraction complete.")
     return all_layer_activations
 
 def create_data_loader(activations: torch.Tensor, batch_size: int) -> torch.utils.data.DataLoader:
