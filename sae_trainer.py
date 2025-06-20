@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 from transformers import AutoModel, AutoTokenizer
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 from sae_model import SparseAutoencoder
 from activation_utils import get_llm_activations_residual_stream
@@ -11,7 +11,7 @@ DEFAULT_SEQ_LEN = 128   # デフォルトのシーケンス長
 SAE_FEATURE_RATIO = 1.1   # この値を大きくすると解釈しやすい表現が得られるが、学習コストが上がる
 LEARNING_RATE = 1e-3    # SAEを学習する際の学習率
 
-def extract_activations(
+def extract_specific_layer_activations(
     llm_model_name: str,
     texts: List[str],
     target_layer_idx: int,
@@ -27,6 +27,31 @@ def extract_activations(
         llm_model, tokenizer, training_texts, layer_index=target_layer_idx, max_length=max_length
     )
     return activations, activation_dict
+
+def ectract_all_layer_activations(
+    llm_model_name: str,
+    texts: List[str],
+    num_samples: int,
+    max_length: int = DEFAULT_SEQ_LEN
+) -> Dict[int, torch.Tensor]:
+    """LLMの全層の活性化を抽出する"""
+    
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
+    llm_model = AutoModel.from_pretrained(llm_model_name)
+    num_layers = llm_model.config.num_hidden_layers
+    all_layer_activations = {}
+    
+    print("")
+    print(f"Extracting activations from {num_layers} layers of the model: {llm_model_name}")
+
+    for layer_idx in range(num_layers):
+        print(f"Extracting activations from layer {layer_idx + 1}/{num_layers}...")
+        activations, _ = get_llm_activations_residual_stream(
+            llm_model, tokenizer, texts, layer_index=layer_idx, max_length=max_length
+        )
+        all_layer_activations[layer_idx] = activations
+
+    return all_layer_activations
 
 def create_data_loader(activations: torch.Tensor, batch_size: int) -> torch.utils.data.DataLoader:
     """活性化テンソルからDataLoaderを作成"""

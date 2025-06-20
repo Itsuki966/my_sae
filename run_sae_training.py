@@ -1,4 +1,4 @@
-from sae_trainer import extract_activations, create_data_loader, train_sparse_autoencoder
+from sae_trainer import extract_specific_layer_activations, create_data_loader, train_sparse_autoencoder
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     num_epochs = 200  # 訓練エポック数
     sae_l1_coeff = 1e-4 # スパース性の度合いを調整する係数
 
-    activations, activations_dict = extract_activations(
+    activations, activations_dict = extract_specific_layer_activations(
         llm_model_name,
         texts,
         target_layer_idx,
