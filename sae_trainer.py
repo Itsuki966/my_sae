@@ -18,7 +18,7 @@ def extract_specific_layer_activations(
     num_samples: int,
     max_length: int = DEFAULT_SEQ_LEN
 ) -> Tuple[torch.Tensor, dict]:
-    """LLMの活性化を抽出する"""
+    """特定の層のLLMの活性化を抽出する"""
     
     tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
     llm_model = AutoModel.from_pretrained(llm_model_name)
@@ -28,7 +28,7 @@ def extract_specific_layer_activations(
     )
     return activations, activation_dict
 
-def ectract_all_layer_activations(
+def extract_all_layer_activations(
     llm_model_name: str,
     texts: List[str],
     num_samples: int,
@@ -67,7 +67,7 @@ def train_sparse_autoencoder(
     llm_model_name: str = ""
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
-    LLMの活性化からSAEを学習する
+    特定の層のLLMの活性化からSAEを学習する
     -SparseAutoencoderのインスタンス
     -学習損失、再構成損失、スパース性損失のリスト
     -SAEの特徴次元、入力次元
