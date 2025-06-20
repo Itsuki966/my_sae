@@ -1,7 +1,9 @@
 import torch
 import torch.optim as optim
 from transformers import AutoModel, AutoTokenizer
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional, Any, Union
+import os
+import matplotlib.pyplot as plt
 
 from sae_model import SparseAutoencoder
 from activation_utils import get_llm_activations_residual_stream
@@ -18,7 +20,19 @@ def extract_specific_layer_activations(
     num_samples: int,
     max_length: int = DEFAULT_SEQ_LEN
 ) -> Tuple[torch.Tensor, dict]:
-    """特定の層のLLMの活性化を抽出する"""
+    """
+    特定の層のLLMの活性化を抽出する
+    
+    Args:
+        llm_model_name: 使用するLLMのモデル名
+        texts: 処理するテキストのリスト
+        target_layer_idx: 抽出する層のインデックス
+        num_samples: 使用するサンプル数
+        max_length: 最大シーケンス長
+        
+    Returns:
+        Tuple[torch.Tensor, Dict]: 活性化テンソルと、テキストごとの活性化辞書
+    """
     
     tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
     llm_model = AutoModel.from_pretrained(llm_model_name)
@@ -34,7 +48,18 @@ def extract_all_layer_activations(
     num_samples: int,
     max_length: int = DEFAULT_SEQ_LEN
 ) -> Dict[int, torch.Tensor]:
-    """LLMの全層の活性化を抽出する"""
+    """
+    LLMの全層の活性化を抽出する
+    
+    Args:
+        llm_model_name: 使用するLLMのモデル名
+        texts: 処理するテキストのリスト
+        num_samples: 使用するサンプル数
+        max_length: 最大シーケンス長
+        
+    Returns:
+        Dict[int, torch.Tensor]: 層インデックスをキー、活性化テンソルを値とする辞書
+    """
     
     tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
     llm_model = AutoModel.from_pretrained(llm_model_name)
@@ -43,11 +68,12 @@ def extract_all_layer_activations(
     
     print("")
     print(f"Extracting activations from {num_layers} layers of the model: {llm_model_name}")
+    training_texts = [texts[i % len(texts)] for i in range(num_samples)]
 
     for layer_idx in range(num_layers):
         print(f"Extracting activations from layer {layer_idx + 1}/{num_layers}...")
         activations, _ = get_llm_activations_residual_stream(
-            llm_model, tokenizer, texts, layer_index=layer_idx, max_length=max_length
+            llm_model, tokenizer, training_texts, layer_index=layer_idx, max_length=max_length
         )
         all_layer_activations[layer_idx] = activations
         print(f"Layer {layer_idx + 1} activations shape: {activations.shape}")
@@ -56,7 +82,16 @@ def extract_all_layer_activations(
     return all_layer_activations
 
 def create_data_loader(activations: torch.Tensor, batch_size: int) -> torch.utils.data.DataLoader:
-    """活性化テンソルからDataLoaderを作成"""
+    """
+    活性化テンソルからDataLoaderを作成
+    
+    Args:
+        activations: 活性化テンソル
+        batch_size: バッチサイズ
+        
+    Returns:
+        torch.utils.data.DataLoader: 訓練用DataLoader
+    """
     
     dataset = torch.utils.data.TensorDataset(activations)
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -67,13 +102,26 @@ def train_sparse_autoencoder(
     num_epochs: int = 200,
     sae_l1_coeff: float = 1e-4,
     llm_model_name: str = "",
-    layer_idx: int = -1
+    layer_idx: int = -1,
+    save_dir: Optional[str] = None
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     特定の層のLLMの活性化からSAEを学習する
-    -SparseAutoencoderのインスタンス
-    -学習損失、再構成損失、スパース性損失のリスト
-    -SAEの特徴次元、入力次元
+    
+    Args:
+        activations: 活性化テンソル
+        data_loader: 訓練用DataLoader
+        num_epochs: 訓練エポック数
+        sae_l1_coeff: L1正則化係数
+        llm_model_name: LLMモデル名（記録用）
+        layer_idx: 層インデックス（記録用）
+        save_dir: モデル保存ディレクトリ（指定があれば保存）
+        
+    Returns:
+        Tuple: 
+            SparseAutoencoderのインスタンス
+            学習損失、再構成損失、スパース性損失のリスト
+            SAEの特徴次元、入力次元
     """
     device = torch.device("mps" if torch.mps.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -81,7 +129,7 @@ def train_sparse_autoencoder(
 
     if activations.shape[0] == 0:
         print("No activations were extracted. Exiting.")
-        return
+        return None, [], [], [], 0, 0
 
     input_dim = activations.shape[1]
     sae_feature_dim = int(input_dim * SAE_FEATURE_RATIO)
@@ -126,13 +174,26 @@ def train_sparse_autoencoder(
         reconstruction_losses.append(avg_recon_loss)
         sparsity_losses.append(avg_sparse_loss)
 
-        print(f"Epoch {epoch + 1}/{num_epochs}, Total Loss: {avg_total_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Sparse Loss: {avg_sparse_loss:.4f}")
-        if (epoch + 1) % 20 == 0:
+        if (epoch + 1) % 20 == 0 or epoch == 0 or epoch == num_epochs - 1:
+            print(f"Epoch {epoch + 1}/{num_epochs}, Total Loss: {avg_total_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Sparse Loss: {avg_sparse_loss:.4f}")
             with torch.no_grad():
-                _, features_eval = sae_model(activations.to(device))
-                print(f"Evaluated features shape: {features_eval.shape}")
+                _, features_eval = sae_model(activations[:min(100, activations.shape[0])].to(device))
+                active_features = (features_eval > 0).float().sum(dim=0)
+                print(f"Active features: {active_features.sum().item()}/{sae_feature_dim} ({active_features.sum().item()/sae_feature_dim*100:.2f}%)")
 
     print(f"Training complete for layer {layer_idx + 1}.")
+    
+    # モデルの保存
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"sae_model_layer_{layer_idx}.pt")
+        sae_model.save_model(save_path)
+        print(f"Model saved to {save_path}")
+        
+        # 損失のプロットも保存
+        plot_training_curves(training_losses, reconstruction_losses, sparsity_losses, 
+                            save_path=os.path.join(save_dir, f"sae_training_curves_layer_{layer_idx}.png"))
+    
     return sae_model, training_losses, reconstruction_losses, sparsity_losses, sae_feature_dim, input_dim
 
 def train_all_layer_saes(
@@ -141,9 +202,24 @@ def train_all_layer_saes(
     num_samples: int,
     batch_size: int = 64,
     num_epochs: int =200,
-    sae_l1_coeff: float = 1e-4
+    sae_l1_coeff: float = 1e-4,
+    save_dir: Optional[str] = None
 ) -> Dict[int, SparseAutoencoder]:
-    """全ての層に対してSAEを学習する"""
+    """
+    全ての層に対してSAEを学習する
+    
+    Args:
+        llm_model_name: 使用するLLMのモデル名
+        texts: 処理するテキストのリスト
+        num_samples: 使用するサンプル数
+        batch_size: バッチサイズ
+        num_epochs: 訓練エポック数
+        sae_l1_coeff: L1正則化係数
+        save_dir: モデル保存ディレクトリ
+        
+    Returns:
+        Dict[int, SparseAutoencoder]: 層インデックスをキー、SAEモデルを値とする辞書
+    """
     
     # 全ての層から活性を取得
     all_layer_activations = extract_all_layer_activations(
@@ -164,8 +240,49 @@ def train_all_layer_saes(
             num_epochs=num_epochs,
             sae_l1_coeff=sae_l1_coeff,
             llm_model_name=llm_model_name,
-            layer_idx=layer_idx
+            layer_idx=layer_idx,
+            save_dir=save_dir
         )
         layer_saes[layer_idx] = sae_model
                 
     return layer_saes
+
+def plot_training_curves(training_losses: List[float], 
+                       reconstruction_losses: List[float], 
+                       sparsity_losses: List[float],
+                       save_path: Optional[str] = None):
+    """
+    訓練曲線をプロットする
+    
+    Args:
+        training_losses: 訓練損失のリスト
+        reconstruction_losses: 再構成損失のリスト
+        sparsity_losses: スパース性損失のリスト
+        save_path: 保存パス（指定があれば保存）
+    """
+    plt.figure(figsize=(12, 4))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(training_losses, label='Total Loss')
+    plt.plot(reconstruction_losses, label='Reconstruction Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training & Reconstruction Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(sparsity_losses, label='Sparsity Loss', color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Sparsity Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        print(f"Training curves saved to {save_path}")
+    
+    plt.show()
