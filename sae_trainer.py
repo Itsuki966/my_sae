@@ -74,14 +74,14 @@ def extract_all_layer_activations(
 
     for layer_idx in range(num_layers):
         print(f"Extracting activations from layer {layer_idx + 1}/{num_layers}...")
-        activations, activations_dict = get_llm_activations_residual_stream(
+        activations, _ = get_llm_activations_residual_stream(
             llm_model, tokenizer, training_texts, layer_index=layer_idx, max_length=max_length
         )
         all_layer_activations[layer_idx] = activations
         print(f"Layer {layer_idx + 1} activations shape: {activations.shape}")
     
     print("All layer activations extraction complete.")
-    return all_layer_activations, activations_dict
+    return all_layer_activations
 
 def create_data_loader(activations: torch.Tensor, batch_size: int) -> torch.utils.data.DataLoader:
     """
@@ -338,7 +338,7 @@ def train_all_layer_saes(
     """
     
     # 全ての層から活性を取得
-    all_layer_activations, activations_dict = extract_all_layer_activations(
+    all_layer_activations = extract_all_layer_activations(
         llm_model_name, texts, num_samples
     )
     
@@ -378,4 +378,4 @@ def train_all_layer_saes(
     
     plot_all_layers_training_curves(all_layer_losses, save_path=combined_save_path)
                 
-    return layer_saes, activations_dict
+    return layer_saes
