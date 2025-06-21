@@ -4,6 +4,8 @@ from transformers import AutoModel, AutoTokenizer
 from typing import List, Tuple, Dict, Optional, Any, Union
 import os
 import matplotlib.pyplot as plt
+import numpy as np
+import math
 
 from sae_model import SparseAutoencoder
 from activation_utils import get_llm_activations_residual_stream
@@ -103,7 +105,8 @@ def train_sparse_autoencoder(
     sae_l1_coeff: float = 1e-4,
     llm_model_name: str = "",
     layer_idx: int = -1,
-    save_dir: Optional[str] = None
+    save_dir: Optional[str] = None,
+    skip_plot: bool = True
 ) -> Tuple[SparseAutoencoder, list, list, list, int, int]:
     """
     特定の層のLLMの活性化からSAEを学習する
@@ -116,6 +119,7 @@ def train_sparse_autoencoder(
         llm_model_name: LLMモデル名（記録用）
         layer_idx: 層インデックス（記録用）
         save_dir: モデル保存ディレクトリ（指定があれば保存）
+        skip_plot: プロット表示をスキップするかどうか
         
     Returns:
         Tuple: 
@@ -183,6 +187,10 @@ def train_sparse_autoencoder(
 
     print(f"Training complete for layer {layer_idx + 1}.")
     
+    # 学習曲線のプロット（skip_plotがFalseの場合のみ表示）
+    if not skip_plot:
+        plot_training_curves(training_losses, reconstruction_losses, sparsity_losses)
+    
     # モデルの保存
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
@@ -191,61 +199,11 @@ def train_sparse_autoencoder(
         print(f"Model saved to {save_path}")
         
         # 損失のプロットも保存
-        plot_training_curves(training_losses, reconstruction_losses, sparsity_losses, 
-                            save_path=os.path.join(save_dir, f"sae_training_curves_layer_{layer_idx}.png"))
+        if not skip_plot:
+            plot_training_curves(training_losses, reconstruction_losses, sparsity_losses, 
+                                save_path=os.path.join(save_dir, f"sae_training_curves_layer_{layer_idx}.png"))
     
     return sae_model, training_losses, reconstruction_losses, sparsity_losses, sae_feature_dim, input_dim
-
-def train_all_layer_saes(
-    llm_model_name: str,
-    texts: List[str],
-    num_samples: int,
-    batch_size: int = 64,
-    num_epochs: int =200,
-    sae_l1_coeff: float = 1e-4,
-    save_dir: Optional[str] = None
-) -> Dict[int, SparseAutoencoder]:
-    """
-    全ての層に対してSAEを学習する
-    
-    Args:
-        llm_model_name: 使用するLLMのモデル名
-        texts: 処理するテキストのリスト
-        num_samples: 使用するサンプル数
-        batch_size: バッチサイズ
-        num_epochs: 訓練エポック数
-        sae_l1_coeff: L1正則化係数
-        save_dir: モデル保存ディレクトリ
-        
-    Returns:
-        Dict[int, SparseAutoencoder]: 層インデックスをキー、SAEモデルを値とする辞書
-    """
-    
-    # 全ての層から活性を取得
-    all_layer_activations = extract_all_layer_activations(
-        llm_model_name, texts, num_samples
-    )
-    
-    # 各層のSAEを格納する辞書
-    layer_saes = {}
-    
-    # 各層ごとにSAEを学習
-    for layer_idx, activations in all_layer_activations.items():
-        print("")
-        print(f"Training SAE for layer {layer_idx + 1}...")
-        
-        data_loader = create_data_loader(activations, batch_size)
-        sae_model, training_loss, recon_loss, sparse_loss, feature_dim, input_dim = train_sparse_autoencoder(
-            activations, data_loader,
-            num_epochs=num_epochs,
-            sae_l1_coeff=sae_l1_coeff,
-            llm_model_name=llm_model_name,
-            layer_idx=layer_idx,
-            save_dir=save_dir
-        )
-        layer_saes[layer_idx] = sae_model
-                
-    return layer_saes
 
 def plot_training_curves(training_losses: List[float], 
                        reconstruction_losses: List[float], 
@@ -286,3 +244,134 @@ def plot_training_curves(training_losses: List[float],
         print(f"Training curves saved to {save_path}")
     
     plt.show()
+
+def plot_all_layers_training_curves(all_losses: Dict[int, Tuple[List[float], List[float], List[float]]], 
+                                  save_path: Optional[str] = None):
+    """
+    全ての層の訓練曲線を複数のサブプロットとして1つの図にまとめる
+    
+    Args:
+        all_losses: 層インデックスをキー、(訓練損失, 再構成損失, スパース性損失)のタプルを値とする辞書
+        save_path: 保存パス（指定があれば保存）
+    """
+    num_layers = len(all_losses)
+    
+    # レイアウトを決定（行数、列数を自動計算）
+    cols = min(4, num_layers)  # 最大4列まで
+    rows = math.ceil(num_layers / cols)
+    
+    # サブプロットの大きさを調整
+    fig_width = 5 * cols
+    fig_height = 3 * rows
+    
+    fig, axes = plt.subplots(rows, cols, figsize=(fig_width, fig_height))
+    if rows == 1 and cols == 1:
+        axes = np.array([axes])  # 1x1の場合、axes をリストに変換
+    axes = axes.flatten()  # 2次元配列を1次元に変換
+    
+    # 各層ごとにサブプロットを作成
+    for i, (layer_idx, (total_loss, recon_loss, sparse_loss)) in enumerate(sorted(all_losses.items())):
+        ax = axes[i]
+        epochs = range(1, len(total_loss) + 1)
+        
+        # 損失の可視化
+        line1, = ax.plot(epochs, total_loss, 'b-', label='Total Loss')
+        line2, = ax.plot(epochs, recon_loss, 'g--', label='Recon Loss')
+        line3, = ax.plot(epochs, sparse_loss, 'r-.', label='Sparse Loss')
+        
+        ax.set_title(f'Layer {layer_idx + 1}')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # 対数スケールの方が見やすい場合がある
+        if max(total_loss) / min(total_loss) > 100:  # 損失の範囲が広い場合
+            ax.set_yscale('log')
+        
+        # 凡例の設定
+        if i == 0:  # 最初のサブプロットにだけ凡例を表示
+            ax.legend()
+    
+    # 未使用のサブプロットを非表示にする
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+    
+    plt.tight_layout()
+    fig.suptitle('Training Curves for All Layers', fontsize=16)
+    plt.subplots_adjust(top=0.92)  # タイトル用のスペースを確保
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+        print(f"Combined training curves saved to {save_path}")
+    
+    plt.show()
+
+def train_all_layer_saes(
+    llm_model_name: str,
+    texts: List[str],
+    num_samples: int,
+    batch_size: int = 64,
+    num_epochs: int =200,
+    sae_l1_coeff: float = 1e-4,
+    save_dir: Optional[str] = None,
+    plot_individual_layers: bool = False
+) -> Dict[int, SparseAutoencoder]:
+    """
+    全ての層に対してSAEを学習する
+    
+    Args:
+        llm_model_name: 使用するLLMのモデル名
+        texts: 処理するテキストのリスト
+        num_samples: 使用するサンプル数
+        batch_size: バッチサイズ
+        num_epochs: 訓練エポック数
+        sae_l1_coeff: L1正則化係数
+        save_dir: モデル保存ディレクトリ
+        plot_individual_layers: 各層の学習曲線を個別に表示するかどうか
+        
+    Returns:
+        Dict[int, SparseAutoencoder]: 層インデックスをキー、SAEモデルを値とする辞書
+    """
+    
+    # 全ての層から活性を取得
+    all_layer_activations = extract_all_layer_activations(
+        llm_model_name, texts, num_samples
+    )
+    
+    # 各層のSAEを格納する辞書
+    layer_saes = {}
+    # 各層の損失を格納する辞書
+    all_layer_losses = {}
+    
+    # 各層ごとにSAEを学習
+    for layer_idx, activations in all_layer_activations.items():
+        print(f"\nTraining SAE for layer {layer_idx + 1}...")
+        dataloader = create_data_loader(activations, batch_size)
+        
+        # 個別の層のプロットを無効化（後でまとめてプロットするため）
+        if not plot_individual_layers:
+            # 元のplot_training_curves関数を呼び出さないように修正
+            sae_model, training_losses, reconstruction_losses, sparsity_losses, _, _ = train_sparse_autoencoder(
+                activations, dataloader, num_epochs=num_epochs, sae_l1_coeff=sae_l1_coeff,
+                llm_model_name=llm_model_name, layer_idx=layer_idx, save_dir=save_dir,
+                skip_plot=True  # プロットをスキップするフラグを追加
+            )
+        else:
+            # 従来通り個別のプロットも表示
+            sae_model, training_losses, reconstruction_losses, sparsity_losses, _, _ = train_sparse_autoencoder(
+                activations, dataloader, num_epochs=num_epochs, sae_l1_coeff=sae_l1_coeff,
+                llm_model_name=llm_model_name, layer_idx=layer_idx, save_dir=save_dir
+            )
+        
+        layer_saes[layer_idx] = sae_model
+        all_layer_losses[layer_idx] = (training_losses, reconstruction_losses, sparsity_losses)
+    
+    # 全ての層の結果をまとめてプロット
+    print("\nAll layers training complete. Plotting combined results...")
+    combined_save_path = None
+    if save_dir:
+        combined_save_path = os.path.join(save_dir, "all_layers_training_curves.png")
+    
+    plot_all_layers_training_curves(all_layer_losses, save_path=combined_save_path)
+                
+    return layer_saes
