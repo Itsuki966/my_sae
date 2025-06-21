@@ -182,10 +182,14 @@ def train_sparse_autoencoder(
             print(f"Epoch {epoch + 1}/{num_epochs}, Total Loss: {avg_total_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Sparse Loss: {avg_sparse_loss:.4f}")
             with torch.no_grad():
                 _, features_eval = sae_model(activations[:min(100, activations.shape[0])].to(device))
-                active_features = (features_eval > 0).float().sum(dim=0)
-                print(f"Active features: {active_features.sum().item()}/{sae_feature_dim} ({active_features.sum().item()/sae_feature_dim*100:.2f}%)")
-
-    print(f"Training complete for layer {layer_idx + 1}.")
+                # 各特徴が少なくとも1回活性化しているかどうかをカウント
+                active_features = ((features_eval > 0).float().sum(dim=0) > 0).float().sum()
+                print(f"Unique active features: {active_features.item()}/{sae_feature_dim} ({active_features.item()/sae_feature_dim*100:.2f}%)")
+                
+                # 平均活性化率も計算して表示（各入力あたりの平均活性化特徴数）
+                mean_activations_per_sample = (features_eval > 0).float().sum(dim=1).mean()
+                print(f"Mean activations per input: {mean_activations_per_sample.item():.2f} ({mean_activations_per_sample.item()/sae_feature_dim*100:.2f}%)")
+                print(f"Training complete for layer {layer_idx + 1}.")
     
     # 学習曲線のプロット（skip_plotがFalseの場合のみ表示）
     if not skip_plot:
