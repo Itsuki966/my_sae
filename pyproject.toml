@@ -6,7 +6,7 @@ authors = [
     {name = "Itsuki Kuwahara",email = "248c117c@stu.kobe-u.ac.jp"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "transformers[torch] (>=4.52.4,<5.0.0)",
     "matplotlib (>=3.10.3,<4.0.0)",
