@@ -8,8 +8,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def analyze_conversation_wit_sae(text: str, model, sae):
-    """会話テキストをSAEで分析"""
+def analyze_conversation_with_sae(text: str, model, sae):
+    """会話テキストをSAEで分析
+
+        Args:
+            text (str): 分析する会話テキスト
+            model: 使用する言語モデル
+            sae: SAEモデル
+            
+        Returns:
+            dict: トークン、特徴活性、再構成結果、元の活性
+    """
     
     # トークナイズ
     tokens = model.to_tokens(text)
@@ -30,7 +39,16 @@ def analyze_conversation_wit_sae(text: str, model, sae):
         }
         
 def visualaize_feature_activations(feature_acts, tokens, model, top_k=20):
-    """特徴活性の可視化：トークンごとの上位特徴量をヒートマップで表示"""
+    """特徴活性の可視化：トークンごとの上位特徴量をヒートマップで表示
+         Args:
+                feature_acts (torch.Tensor): 特徴活性化のテンソル
+                tokens (torch.Tensor): トークンのテンソル
+                model: 使用する言語モデル
+                top_k (int): 表示する上位特徴量の数
+                
+          Returns:
+                None: ヒートマップを表示
+    """
     
     # トークンを文字列に変換
     token_strs = [model.to_string(token) for token in tokens[0]]
@@ -49,6 +67,7 @@ def visualaize_feature_activations(feature_acts, tokens, model, top_k=20):
     ax1.set_title('Top Feature Activations Across Tokens')
     ax1.set_xticks(range(len(token_strs)))
     ax1.set_xticklabels(token_strs, rotation=45, ha='right')
+    ax1.set_yticks(range(top_k), labels=[f'Rank {i+1}' for i in range(top_k)])
     plt.colorbar(im1, ax=ax1, label='Activation Strength')
     
     # 特徴量の分布
