@@ -38,7 +38,7 @@ def analyze_conversation_with_sae(text: str, model, sae):
             "original_acts": cache[sae.cfg.hook_name]
         }
         
-def visualaize_feature_activations(feature_acts, tokens, model, top_k=20):
+def visualize_feature_activations(feature_acts, tokens, model, top_k=20):
     """特徴活性の可視化：トークンごとの上位特徴量をヒートマップで表示
          Args:
                 feature_acts (torch.Tensor): 特徴活性化のテンソル
