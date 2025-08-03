@@ -120,7 +120,8 @@ def test_single_choice_extraction(config: QuickTestConfig):
                 tokens,
                 max_new_tokens=config.max_new_tokens,
                 do_sample=False,
-                temperature=config.temperature
+                temperature=config.temperature,
+                pad_token_id=model.tokenizer.eos_token_id
             )
         
         # レスポンス取得
@@ -226,7 +227,8 @@ Final answer: """
                 tokens,
                 max_new_tokens=config.max_new_tokens,
                 do_sample=False,
-                temperature=config.temperature
+                temperature=config.temperature,
+                pad_token_id=model.tokenizer.eos_token_id
             )
         
         generated_text = model.tokenizer.decode(generated[0], skip_special_tokens=True)
