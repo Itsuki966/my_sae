@@ -84,7 +84,7 @@ class SycophancyAnalyzer:
                 device=self.device
             )
             
-            # SAEがtupleで返される場合の処理
+                        # SAEがtupleで返される場合の処理
             if isinstance(sae_result, tuple):
                 self.sae = sae_result[0]  # 最初の要素を使用
                 print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
@@ -97,7 +97,7 @@ class SycophancyAnalyzer:
             
             # pad_token_idの設定を避ける（エラー回避）
             if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token = self.tokenizer.eos_tokenself.tokenizer.pad_token = self.tokenizer.eos_token
                 
         except Exception as e:
             print(f"❌ モデル読み込みエラー: {e}")
@@ -172,39 +172,31 @@ class SycophancyAnalyzer:
         if not response:
             return None
             
-        # デバッグ情報を追加
-        print(f"🔍 応答内容: '{response}' (長さ: {len(response)})")
-        
         # 応答を大文字に変換して処理
         response_upper = response.upper().strip()
-        print(f"🔍 大文字変換後: '{response_upper}'")
         
         # パターン1: 単独の選択肢文字（最も一般的）
         single_letter_match = re.search(r'\b([A-E])\b', response_upper)
         if single_letter_match:
             found = single_letter_match.group(1)
-            print(f"✅ パターン1で発見: {found}")
             return found
         
         # パターン2: 括弧付きの選択肢
         paren_match = re.search(r'\(([A-E])\)', response_upper)
         if paren_match:
             found = paren_match.group(1)
-            print(f"✅ パターン2で発見: {found}")
             return found
         
         # パターン3: "答えは" や "answer is" の後の文字
         answer_match = re.search(r'(?:答えは|ANSWER IS|THE ANSWER IS)\s*\(?([A-E])\)?', response_upper)
         if answer_match:
             found = answer_match.group(1)
-            print(f"✅ パターン3で発見: {found}")
             return found
         
         # パターン4: 最初に見つかるA-Eの文字（スペースや句読点に関係なく）
         first_letter = re.search(r'([A-E])', response_upper)
         if first_letter:
             found = first_letter.group(1)
-            print(f"✅ パターン4で発見: {found}")
             return found
         
         # パターン5: 特殊文字を含む応答の処理（(...) などの場合）  
@@ -216,10 +208,8 @@ class SycophancyAnalyzer:
                 letter_in_bracket = re.search(r'([A-E])', content)
                 if letter_in_bracket:
                     found = letter_in_bracket.group(1)
-                    print(f"✅ パターン5で発見: {found}")
                     return found
         
-        print(f"❌ 回答文字を抽出できませんでした")
         return None
     
     def get_model_response(self, prompt: str) -> str:
@@ -242,14 +232,54 @@ class SycophancyAnalyzer:
             
             # 生成（HookedTransformerに適した設定）
             with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_new_tokens=self.config.generation.max_new_tokens,
-                    temperature=self.config.generation.temperature,
-                    do_sample=self.config.generation.do_sample,
-                    top_p=self.config.generation.top_p
-                    # pad_token_idは HookedTransformer でサポートされていないため削除
-                )
+                # HookedTransformerの場合、generateメソッドが利用できない可能性があるため
+                # より基本的な方法を使用
+                try:
+                    outputs = self.model.generate(
+                        inputs,
+                        max_new_tokens=self.config.generation.max_new_tokens,
+                        temperature=self.config.generation.temperature,
+                        do_sample=self.config.generation.do_sample,
+                        top_p=self.config.generation.top_p
+                        # pad_token_idは HookedTransformer でサポートされていないため削除
+                    )
+                except AttributeError:
+                    # generateメソッドが存在しない場合の代替手段
+                    print("⚠️ generateメソッドが利用できません。基本的な推論を使用します")
+                    
+                    # 1つのトークンだけ生成（簡略化）
+                    logits = self.model(inputs)
+                    
+                    # 最後のトークンの予測を取得
+                    next_token_logits = logits[0, -1, :]
+                    
+                    # 温度スケーリング
+                    if self.config.generation.temperature > 0:
+                        next_token_logits = next_token_logits / self.config.generation.temperature
+                    
+                    # サンプリング
+                    if self.config.generation.do_sample:
+                        # top-pサンプリング
+                        sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                        cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                        
+                        # top-p閾値を超えるトークンを除外
+                        sorted_indices_to_remove = cumulative_probs > self.config.generation.top_p
+                        sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                        sorted_indices_to_remove[0] = 0
+                        
+                        indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                        next_token_logits[indices_to_remove] = -float('inf')
+                        
+                        # サンプリング
+                        probs = torch.softmax(next_token_logits, dim=-1)
+                        next_token = torch.multinomial(probs, num_samples=1)
+                    else:
+                        # グリーディデコーディング
+                        next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                    
+                    # 結果を適切な形式に変換
+                    outputs = torch.cat([inputs, next_token.unsqueeze(0)], dim=1)
             
             # 新しく生成された部分のみを取得
             generated_part = outputs[0][inputs.shape[1]:]
@@ -288,16 +318,12 @@ class SycophancyAnalyzer:
                 activation = cache[hook_name]
                 
                 # activationの形状を確認して調整
-                print(f"🔍 Activation shape: {activation.shape}")
-                
                 if activation.dim() > 2:
                     # バッチ次元がある場合は最後のトークンのみを使用
                     activation = activation[:, -1, :]
                 elif activation.dim() == 1:
                     # 1次元の場合はバッチ次元を追加
                     activation = activation.unsqueeze(0)
-                
-                print(f"🔍 Adjusted activation shape: {activation.shape}")
                 
                 # SAEが期待する形状にさらに調整
                 if hasattr(self.sae, 'cfg') and hasattr(self.sae.cfg, 'd_in'):
@@ -376,7 +402,6 @@ class SycophancyAnalyzer:
             )
             
             # 初回応答の取得（タイムアウト対策）
-            print("🔄 初回応答生成中...")
             initial_response = self.get_model_response(initial_prompt)
             if not initial_response:
                 print("⚠️ 初回応答が空です")
@@ -388,7 +413,6 @@ class SycophancyAnalyzer:
             challenge_prompt = initial_prompt + f"\n\nYour answer: {initial_response}\n" + self.config.prompts.challenge_prompt
             
             # 挑戦後の応答取得（タイムアウト対策）
-            print("🔄 挑戦後応答生成中...")
             challenge_response = self.get_model_response(challenge_prompt)
             if not challenge_response:
                 print("⚠️ 挑戦後応答が空です")
@@ -397,7 +421,6 @@ class SycophancyAnalyzer:
                 challenge_answer = self.extract_answer_letter(challenge_response)
             
             # SAE活性化の取得（タイムアウト対策）
-            print("🔄 SAE活性化計算中...")
             initial_activations = self.get_sae_activations(initial_prompt)
             challenge_activations = self.get_sae_activations(challenge_prompt)
             
@@ -412,7 +435,6 @@ class SycophancyAnalyzer:
             initial_correct = initial_answer == correct_letter if initial_answer else False
             challenge_correct = challenge_answer == correct_letter if challenge_answer else False
             
-            print("✅ 単一分析完了")
             return {
                 'question': question,
                 'answers': answers,
