@@ -31,6 +31,21 @@ from collections import Counter
 import warnings
 warnings.filterwarnings('ignore')
 
+# 実験設定の読み込み
+try:
+    from experiment_config import (
+        ExperimentConfig,
+        get_quick_test_config,
+        get_full_analysis_config,
+        get_debug_config,
+        validate_config,
+        print_config_summary
+    )
+    CONFIG_AVAILABLE = True
+except ImportError:
+    print("⚠️ experiment_config.py が見つかりません。")
+    CONFIG_AVAILABLE = False
+
 # SAE Lens関連
 try:
     from sae_lens import SAE, HookedSAETransformer
@@ -59,72 +74,75 @@ if IS_JUPYTER:
 else:
     print("🐍 Python スクリプト環境で実行中")
 
+IS_JUPYTER = is_jupyter()
+
+if IS_JUPYTER:
+    print("📓 Jupyter Notebook環境で実行中")
+else:
+    print("🐍 Python スクリプト環境で実行中")
+
 # =============================================================================
-# セル2: 実験設定の一元管理
+# セル2: 実験設定の初期化
 # =============================================================================
 
-@dataclass
-class ExperimentConfig:
-    """実験設定の一元管理クラス"""
-    
-    # === モデル設定 ===
-    model_name: str = "pythia-70m-deduped"  # 使用するLLMモデル
-    sae_release: str = "pythia-70m-deduped-res-sm"  # SAEのリリース名
-    sae_id: str = "blocks.5.hook_resid_post"  # 使用するSAEのID
-    
-    # === データ設定 ===
-    dataset_path: str = "eval_dataset/are_you_sure.jsonl"  # データセットのパス
-    sample_size: int = 30  # 分析するサンプル数（スクリプト実行時は小さめ）
-    
-    # === 生成設定 ===
-    max_new_tokens: int = 8  # 生成する最大トークン数（短くして確実に単一選択肢を取得）
-    temperature: float = 0.1  # 生成の温度（低いほど決定的）
-    do_sample: bool = False  # サンプリングを行うかどうか
-    repetition_penalty: float = 1.1  # 繰り返しペナルティ
-    
-    # === プロンプト設定 ===
-    force_single_choice: bool = True  # 単一選択肢を強制するかどうか
-    use_improved_extraction: bool = True  # 改善された回答抽出を使用するかどうか
-    challenge_prompt_type: str = "standard"  # 挑戦的プロンプトのタイプ
-    
-    # === 分析設定 ===
-    top_k_features: int = 20  # 分析する特徴の数
-    show_details: bool = True  # 詳細な分析結果を表示するかどうか
-    detail_samples: int = 3  # 詳細表示するサンプル数
-    debug_extraction: bool = False  # 回答抽出のデバッグ情報を表示するかどうか
-    
-    # === 可視化設定 ===
-    figure_height: int = 800  # グラフの高さ
-    show_individual_cases: bool = True  # 個別ケースの可視化を行うかどうか
-    max_examples_shown: int = 3  # 表示する例の最大数
-    
-    def __post_init__(self):
-        """デバイスの自動設定"""
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
+# デフォルト設定の作成
+if CONFIG_AVAILABLE:
+    # 設定ファイルから読み込み
+    config = get_quick_test_config()  # クイックテスト設定を使用
+    print("✅ 実験設定ファイルから設定を読み込みました")
+    print_config_summary(config)
+else:
+    # フォールバック: 埋め込み設定
+    @dataclass
+    class ExperimentConfig:
+        """実験設定の一元管理クラス（フォールバック版）"""
         
-        # スクリプト実行時は設定を調整
-        if not IS_JUPYTER:
-            self.sample_size = min(self.sample_size, 20)  # より小さなサンプルに
-            self.show_details = True  # 詳細表示はON
-            self.detail_samples = 2  # 表示例は少なめに
+        # === モデル設定 ===
+        model_name: str = "pythia-70m-deduped"  # 使用するLLMモデル
+        sae_release: str = "pythia-70m-deduped-res-sm"  # SAEのリリース名
+        sae_id: str = "blocks.5.hook_resid_post"  # 使用するSAEのID
         
-        print(f"🔧 実験設定初期化完了")
-        print(f"   実行環境: {'Jupyter' if IS_JUPYTER else 'Python Script'}")
-        print(f"   デバイス: {self.device}")
-        print(f"   モデル: {self.model_name}")
-        print(f"   サンプル数: {self.sample_size}")
+        # === データ設定 ===
+        dataset_path: str = "eval_dataset/are_you_sure.jsonl"  # データセットのパス
+        sample_size: int = 30  # 分析するサンプル数（スクリプト実行時は小さめ）
+        
+        # === 生成設定 ===
+        max_new_tokens: int = 8  # 生成する最大トークン数（短くして確実に単一選択肢を取得）
+        temperature: float = 0.1  # 生成の温度（低いほど決定的）
+        do_sample: bool = False  # サンプリングを行うかどうか
+        repetition_penalty: float = 1.1  # 繰り返しペナルティ
+        
+        # === デバイス設定 ===
+        device: str = None
+        
+        def __post_init__(self):
+            if self.device is None:
+                if torch.backends.mps.is_available():
+                    self.device = "mps"
+                elif torch.cuda.is_available():
+                    self.device = "cuda"
+                else:
+                    self.device = "cpu"
+    
+    config = ExperimentConfig()
+    print("⚠️ フォールバック設定を使用しています")
 
-# 実験設定のインスタンス化
-config = ExperimentConfig()
-device = config.device  # 後方互換性のため
+# 設定のカスタマイズ例（ユーザーが変更可能）
+# config.sample_size = 50          # より多くのサンプル
+# config.temperature = 0.0         # 完全決定的
+# config.show_details = False      # 詳細表示オフ
 
 # =============================================================================
-# セル3: データセットの読み込み
+# セル3: 改善された回答抽出クラス
+# =============================================================================
+
+# 設定のカスタマイズ例（ユーザーが変更可能）
+# config.sample_size = 50          # より多くのサンプル
+# config.temperature = 0.0         # 完全決定的
+# config.show_details = False      # 詳細表示オフ
+
+# =============================================================================
+# セル3: データセット読み込み関数
 # =============================================================================
 
 def load_jsonl(file_path: str) -> List[Dict[str, Any]]:
@@ -138,7 +156,6 @@ def load_jsonl(file_path: str) -> List[Dict[str, Any]]:
             data.append(json.loads(line.strip()))
     return data
 
-# データセット読み込み
 def load_dataset():
     """データセットを読み込み、サンプルを抽出"""
     try:
@@ -162,7 +179,64 @@ def load_dataset():
         return []
 
 # =============================================================================
-# セル4: モデルとSAEの読み込み
+# セル4: 改善された回答抽出クラス
+# =============================================================================
+
+class ImprovedAnswerExtractor:
+    """改善された回答抽出クラス"""
+    
+    def extract(self, response: str, debug: bool = False) -> str:
+        """改善された回答抽出 - より確実に単一選択肢を抽出"""
+        if debug:
+            print(f"DEBUG: 解析対象のレスポンス: '{response}'")
+        
+        if not response or not response.strip():
+            return "UNKNOWN"
+        
+        response = response.strip()
+        
+        # 短い回答の処理（5文字以下）
+        if len(response) <= 5:
+            import re
+            match = re.search(r'([ABCDE])', response, re.IGNORECASE)
+            result = match.group(1).upper() if match else "UNKNOWN"
+            if debug:
+                print(f"DEBUG: 短い回答処理 -> {result}")
+            return result
+        
+        # 優先度付きパターンマッチング
+        patterns = [
+            # 高優先度: 完全な単一文字パターン
+            (r'^([ABCDE])$', "完全一致"),
+            (r'^([ABCDE])[\.\)]', "文字+記号"),
+            (r'^\(([ABCDE])\)$', "括弧付き"),
+            
+            # 中優先度: 文章内の明確な回答
+            (r'answer.*?([ABCDE])', "answer文"),
+            (r'choose.*?([ABCDE])', "choose文"),
+            (r'select.*?([ABCDE])', "select文"),
+            (r'option.*?([ABCDE])', "option文"),
+            
+            # 低優先度: 一般的なパターン
+            (r'\b([ABCDE])\b', "単語境界"),
+            (r'([ABCDE])', "任意の場所")
+        ]
+        
+        import re
+        for pattern, desc in patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
+            if match:
+                result = match.group(1).upper()
+                if debug:
+                    print(f"DEBUG: パターン '{desc}' でマッチ -> {result}")
+                return result
+        
+        if debug:
+            print(f"DEBUG: マッチなし -> UNKNOWN")
+        return "UNKNOWN"
+
+# =============================================================================
+# セル5: モデル初期化関数
 # =============================================================================
 
 def initialize_models():

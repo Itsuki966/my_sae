@@ -8,7 +8,7 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 2. **内部メカニズムの解明**: SAEを用いてLLMの内部構造を可視化し、迎合性の原因を特定
 3. **改善された分析手法**: より確実な単一選択肢抽出と包括的な分析
 
-## 📁 ファイル構成
+## 📁 整理後のファイル構成
 
 ### 🚀 メイン実行ファイル
 ```
@@ -16,123 +16,132 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 ├── sae_sycophancy_analysis_clean.ipynb  # メインNotebook（.pyからクラスをインポート）
 ```
 
-### 📊 分析・学習用Notebook
+### ⚙️ 設定・テストファイル
+```
+├── experiment_config.py                 # 実験設定管理（NEW!）
+├── sae_test_light.py                    # 軽量テスト版（NEW!）
+```
+
+### 📊 学習・分析用Notebook
 ```
 ├── sae_are_you_sure_analysis.ipynb      # Are You Sure分析詳細版
 ├── tutorial_2_0.ipynb                   # SAE学習・理解用チュートリアル
-├── demo_sae_lens.ipynb                  # SAE Lensデモンストレーション
-├── sample.ipynb                         # サンプルコード・実験用
-├── sae_sycophancy.ipynb                 # 迎合性分析の初期版
 ```
 
-### 📂 データ・設定
+### 📂 データ・プロジェクト管理
 ```
 ├── eval_dataset/
-│   └── are_you_sure.jsonl              # 評価用データセット
+│   ├── are_you_sure.jsonl              # 評価用データセット
+│   ├── answer.jsonl                     # 回答データ
+│   └── feedback.jsonl                   # フィードバックデータ
 ├── pyproject.toml                       # Poetry依存関係管理
 ├── poetry.lock                          # 依存関係ロック
 └── README.md                           # このファイル
 ```
 
-## 🚀 クイックスタート
+## 🚀 使用方法
 
-### 1. 環境セットアップ
+### 1. 初期設定
 ```bash
-# Poetry環境で依存関係をインストール
+# 依存関係のインストール
 poetry install
 
-# または pip で直接インストール
-pip install torch sae-lens transformers plotly pandas numpy tqdm
+# 環境のアクティベート
+poetry shell
 ```
 
 ### 2. 実行方法
 
-#### 🎯 迎合性分析（メイン機能）
-
-**方法A: 統合版スクリプト実行（推奨）**
+#### 方法A: Pythonスクリプト直接実行（推奨）
 ```bash
-# 最も簡単な実行方法
-poetry run python sae_sycophancy_hybrid.py
-
-# または直接実行
+# 統合版メインスクリプト（改善された分析機能付き）
 python sae_sycophancy_hybrid.py
+
+# 軽量テスト版（動作確認用）
+python sae_test_light.py
 ```
 
-**方法B: Jupyter Notebook**
+#### 方法B: Jupyter Notebook実行
 ```bash
-# Jupyter起動
-poetry run jupyter notebook
+# JupyterLabを起動
+jupyter lab
 
-# sae_sycophancy_analysis_clean.ipynb を開いて実行
+# または個別にnotebookを起動
+jupyter notebook sae_sycophancy_analysis_clean.ipynb
 ```
 
-#### 📚 学習・デモ用Notebook
+### 3. 実験設定のカスタマイズ（NEW!）
 
-**SAE学習チュートリアル**
-```bash
-jupyter notebook tutorial_2_0.ipynb
-```
-
-**SAE Lensデモ**
-```bash  
-jupyter notebook demo_sae_lens.ipynb
-```
-
-**詳細分析**
-```bash
-jupyter notebook sae_are_you_sure_analysis.ipynb
-```
-
-## ⚙️ 設定カスタマイズ
-
-### 主要な設定項目
-
-実験設定は `sae_sycophancy_hybrid.py` の `ExperimentConfig` クラスで管理されています：
+新しい設定管理システム（`experiment_config.py`）を使用して、実験パラメータを簡単に変更できます：
 
 ```python
-@dataclass
-class ExperimentConfig:
-    # === モデル設定 ===
-    model_name: str = "pythia-70m-deduped"           # 使用するLLMモデル
-    sae_release: str = "pythia-70m-deduped-res-sm"   # SAEのリリース名
-    sae_id: str = "blocks.5.hook_resid_post"         # 使用するSAEのID
-    
-    # === データ設定 ===
-    sample_size: int = 50                            # 分析するサンプル数
-    
-    # === 生成設定 ===
-    max_new_tokens: int = 8                          # 生成する最大トークン数
-    temperature: float = 0.1                         # 生成の温度（低いほど決定的）
-    
-    # === 分析設定 ===
-    top_k_features: int = 20                         # 分析する特徴の数
-    show_details: bool = True                        # 詳細表示の有無
-```
+from experiment_config import ExperimentConfig, get_quick_test_config, get_full_analysis_config
 
-### 設定変更例
+# 事前定義された設定を使用
+config = get_quick_test_config()  # 高速テスト用
 
-#### 1. サンプル数の調整
-```python
-# sae_sycophancy_hybrid.py内のconfig変数を変更
+# カスタム設定を作成
 config = ExperimentConfig(
-    sample_size=100,  # より多くのサンプルで分析
+    n_samples=50,         # サンプル数
+    batch_size=8,         # バッチサイズ  
+    model_name="gpt-3.5-turbo",  # モデル名
+    n_top_features=20,    # 表示する特徴量数
+    min_confidence=0.8,   # 最小信頼度
+    seed=42              # 再現性のためのシード
 )
 ```
 
-#### 2. モデルの変更
-```python
-config = ExperimentConfig(
-    model_name="pythia-160m-deduped",  # より大きなモデルを使用
-    sae_release="pythia-160m-deduped-res-sm",
-    sae_id="blocks.7.hook_resid_post",
-)
+#### 利用可能な設定プリセット
+- `get_quick_test_config()`: 高速テスト用（10サンプル）
+- `get_full_analysis_config()`: 完全分析用（500サンプル）
+- `get_debug_config()`: デバッグ用（詳細ログ有効）
+
+### 4. 軽量テスト実行（NEW!）
+
+プロジェクトの基本機能をテストするには：
+
+```bash
+python sae_test_light.py
 ```
 
-#### 3. 生成設定の調整
+このテストでは以下を確認します：
+- データ読み込み機能
+- 回答抽出システム
+- プロンプト構築
+- 設定管理システム
+
+## 🔧 実験設定の詳細
+
+### 主要パラメータ
+
+| パラメータ名 | 説明 | デフォルト値 |
+|-------------|------|-------------|
+| `n_samples` | 分析するサンプル数 | 100 |
+| `batch_size` | バッチサイズ | 4 |
+| `model_name` | 使用するモデル | "gpt-3.5-turbo" |
+| `sae_repo_id` | SAEリポジトリID | "jbloom/GPT2-Small-SAEs-Reformatted" |
+| `layer_id` | 分析対象レイヤー | 6 |
+| `n_top_features` | 表示する特徴量数 | 10 |
+| `min_confidence` | 最小信頼度閾値 | 0.7 |
+| `temperature` | 生成時の温度パラメータ | 0.1 |
+| `max_tokens` | 最大トークン数 | 50 |
+
+### 設定例
+
 ```python
-config = ExperimentConfig(
-    max_new_tokens=5,      # より短い回答を強制
-    temperature=0.0,       # 完全に決定的
+# 高速プロトタイプ用
+quick_config = ExperimentConfig(
+    n_samples=10,
+    batch_size=2,
+    verbose=True
+)
+
+# 本格分析用
+full_config = ExperimentConfig(
+    n_samples=1000,
+    batch_size=16,
+    n_top_features=50,
+    detailed_analysis=True
 )
 ```
 
@@ -190,14 +199,12 @@ class ImprovedAnswerExtractor:
 
 #### `sae_sycophancy_hybrid.py` ⭐推奨⭐
 - **用途**: 迎合性分析のメイン実行ファイル
-- **特徴**: Pythonスクリプトとしてもノートブックとしても実行可能
+- **特徴**: 統合された分析機能とエラーハンドリング
 - **実行方法**: `python sae_sycophancy_hybrid.py`
 - **含まれる機能**:
-  - `ExperimentConfig`: 実験設定管理
-  - `improved_extract_answer_letter()`: 改善された回答抽出
-  - `run_sycophancy_analysis()`: メイン分析関数
-  - `comprehensive_analyze_sycophancy_results()`: 包括的分析
-  - `comprehensive_plot_sycophancy_results()`: 結果可視化
+  - `ImprovedAnswerExtractor`: 改善された回答抽出
+  - 迎合性分析のメイン機能
+  - 包括的な結果分析と可視化
 
 #### `sae_sycophancy_analysis_clean.ipynb`
 - **用途**: Notebook形式での詳細分析
@@ -208,7 +215,27 @@ class ImprovedAnswerExtractor:
   - 途中結果を確認しながら進めたい場合
   - 設定を細かく調整したい場合
 
-### 学習・デモ用Notebook
+### 設定・テストファイル
+
+#### `experiment_config.py` 🆕
+- **用途**: 実験設定の統合管理
+- **特徴**: マジックナンバーを排除し、設定を集約
+- **含まれる機能**:
+  - `ExperimentConfig`: 設定データクラス
+  - プリセット設定（クイックテスト、フル分析、デバッグ）
+  - バリデーション機能
+
+#### `sae_test_light.py` 🆕
+- **用途**: 軽量テスト版（動作確認用）
+- **特徴**: 基本機能のみ実装、高速実行
+- **実行方法**: `python sae_test_light.py`
+- **テスト内容**:
+  - データ読み込みテスト
+  - 回答抽出テスト
+  - プロンプト構築テスト
+  - 設定管理テスト
+
+### 学習・分析用Notebook
 
 #### `tutorial_2_0.ipynb`
 - **用途**: SAE（Sparse Autoencoder）の学習と理解
@@ -218,14 +245,6 @@ class ImprovedAnswerExtractor:
   - 実装例
   - 可視化手法
 
-#### `demo_sae_lens.ipynb`
-- **用途**: SAE Lensライブラリのデモンストレーション
-- **対象**: SAE Lensの使い方を学びたい方
-- **内容**:
-  - ライブラリの基本的な使い方
-  - 特徴抽出の例
-  - 可視化機能
-
 #### `sae_are_you_sure_analysis.ipynb`
 - **用途**: Are You Sure タスクの詳細分析
 - **対象**: 迎合性分析の詳細を理解したい方
@@ -233,17 +252,6 @@ class ImprovedAnswerExtractor:
   - タスクの詳細な実装
   - 結果の深い分析
   - 問題ケースの調査
-
-#### `sample.ipynb`
-- **用途**: 実験・テスト用のサンプルコード
-- **対象**: 新しいアイデアを試したい方
-- **内容**: 
-  - 様々なサンプルコード
-  - 実験的な機能
-
-#### `sae_sycophancy.ipynb`
-- **用途**: 迎合性分析の初期版・参考用
-- **対象**: 開発の歴史を確認したい方
 
 ## 🛠️ トラブルシューティング
 
@@ -295,19 +303,20 @@ ls -la eval_dataset/are_you_sure.jsonl
 ## 🎯 推奨ワークフロー
 
 ### 初心者向け
-1. `tutorial_2_0.ipynb` でSAEの基本を学習
-2. `demo_sae_lens.ipynb` でSAE Lensの使い方を習得
+1. `sae_test_light.py` で基本機能の動作確認
+2. `tutorial_2_0.ipynb` でSAEの基本を学習
 3. `sae_sycophancy_hybrid.py` で迎合性分析を実行
 
 ### 研究者向け
-1. `sae_sycophancy_hybrid.py` で基本的な分析を実行
-2. `sae_sycophancy_analysis_clean.ipynb` で詳細な対話的分析
-3. `sae_are_you_sure_analysis.ipynb` で深い分析と検証
+1. `experiment_config.py` で実験設定をカスタマイズ
+2. `sae_sycophancy_hybrid.py` で基本的な分析を実行
+3. `sae_sycophancy_analysis_clean.ipynb` で詳細な対話的分析
+4. `sae_are_you_sure_analysis.ipynb` で深い分析と検証
 
 ### 開発者向け
-1. `sample.ipynb` で新機能をプロトタイプ
-2. `sae_sycophancy_hybrid.py` に統合
-3. テストと検証
+1. `sae_test_light.py` で機能テスト
+2. `experiment_config.py` で新しい設定を追加
+3. `sae_sycophancy_hybrid.py` に新機能を統合
 
 ## 📚 参考情報
 
