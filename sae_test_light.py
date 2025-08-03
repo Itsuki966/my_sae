@@ -282,10 +282,7 @@ def run_all_tests():
         ("回答抽出", test_answer_extraction),
         ("データ読み込み", test_data_loading), 
         ("プロンプト構築", test_prompt_construction),
-<<<<<<< HEAD
         ("設定管理", test_config_management),
-=======
->>>>>>> parent of 98f59f1 (フォルダの整理)
         ("分析機能", test_analysis_functions)
     ]
     
