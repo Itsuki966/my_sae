@@ -1,4 +1,4 @@
-# SAE迎合性分析プロジェクト
+# SAE迎合性分析 - 改善版
 
 LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使用して内部メカニズムを可視化するプロジェクトです。
 
@@ -30,12 +30,22 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 
 ### 📂 データ・プロジェクト管理
 ```
+├── sae_sycophancy_analysis_clean.ipynb  # メインのノートブック（改善版）
+├── sae_sycophancy_improved.py           # スタンドアロン実行スクリプト  
+├── sae_sycophancy_hybrid.py             # ハイブリッド版（.py と .ipynb 両対応）
+├── quick_sycophancy_test.py             # クイックテスト用スクリプト
+├── sae_test_light.py                    # 軽量テスト（依存関係最小限）
+├── setup_environment.py                 # 環境セットアップスクリプト
 ├── eval_dataset/
+<<<<<<< HEAD
 │   ├── are_you_sure.jsonl              # 評価用データセット
 │   ├── answer.jsonl                     # 回答データ
 │   └── feedback.jsonl                   # フィードバックデータ
 ├── pyproject.toml                       # Poetry依存関係管理
 ├── poetry.lock                          # 依存関係ロック
+=======
+│   └── are_you_sure.jsonl              # 評価用データセット
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 └── README.md                           # このファイル
 ```
 
@@ -43,6 +53,7 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 
 ### 1. 初期設定
 ```bash
+<<<<<<< HEAD
 # 依存関係のインストール
 poetry install
 
@@ -73,14 +84,63 @@ jupyter notebook sae_sycophancy_analysis_clean.ipynb
 ### 3. 実験設定のカスタマイズ（NEW!）
 
 新しい設定管理システム（`experiment_config.py`）を使用して、実験パラメータを簡単に変更できます：
+=======
+# 環境セットアップスクリプトを実行（推奨）
+python setup_environment.py
+
+# または手動でPoetry依存関係をインストール
+poetry install
+```
+
+### 2. 軽量テスト
+```bash
+# 基本機能をテスト
+python sae_test_light.py
+```
+
+### 3. 実行方法（3つの選択肢）
+
+#### オプション A: ハイブリッド版（推奨）
+```bash
+# Python スクリプトとして実行
+poetry run python sae_sycophancy_hybrid.py
+
+# または Jupyter Notebook として実行
+poetry run jupyter notebook
+# ↳ sae_sycophancy_hybrid.py を .ipynb として開く
+```
+
+#### オプション B: スタンドアロン版  
+```bash
+poetry run python sae_sycophancy_improved.py
+```
+
+#### オプション C: 従来のNotebook版
+```bash
+poetry run jupyter notebook sae_sycophancy_analysis_clean.ipynb
+```
+
+## ⚙️ 設定カスタマイズ
+
+### 主要な設定項目
+
+実験設定は各ファイルの `ExperimentConfig` クラスで一元管理されています：
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 
 ```python
 from experiment_config import ExperimentConfig, get_quick_test_config, get_full_analysis_config
 
+<<<<<<< HEAD
 # 事前定義された設定を使用
 config = get_quick_test_config()  # 高速テスト用
 
 # カスタム設定を作成
+=======
+### よく変更する設定
+
+#### 1. サンプル数の調整
+```python
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 config = ExperimentConfig(
     n_samples=50,         # サンプル数
     batch_size=8,         # バッチサイズ  
@@ -129,6 +189,7 @@ python sae_test_light.py
 ### 設定例
 
 ```python
+<<<<<<< HEAD
 # 高速プロトタイプ用
 quick_config = ExperimentConfig(
     n_samples=10,
@@ -142,28 +203,36 @@ full_config = ExperimentConfig(
     batch_size=16,
     n_top_features=50,
     detailed_analysis=True
+=======
+config = ExperimentConfig(
+    max_new_tokens=5,      # より短い回答を強制
+    temperature=0.0,       # 完全に決定的
+    repetition_penalty=1.2 # 繰り返しをより強く抑制
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 )
 ```
 
-## 🔧 主な機能と改善点
+## 🔧 主な改善点
 
-### 1. 迎合性分析の核心機能
-- **Are You Sure タスク**: LLMの回答を疑問視して再考を促す実験
-- **単一選択肢抽出**: 改善されたパターンマッチングで確実な回答抽出
-- **SAE特徴分析**: 内部表現の変化を可視化
+### 1. 単一選択肢抽出の改善
+- **問題**: LLMが全ての選択肢を出力する
+- **解決**: 改良されたプロンプト戦略と回答抽出パターン
 
-### 2. 改善された分析手法
 ```python
 class ImprovedAnswerExtractor:
     def extract(self, response: str) -> str:
         # 優先度付きパターンマッチング
         high_priority_patterns = [
-            r'^([ABCDE])$',         # 完全に単一文字のみ
-            r'^([ABCDE])[\.\)]',    # A. or A)
+            r'^([ABCDE])$',  # 完全に単一文字のみ
+            r'^([ABCDE])[\.\)]',  # A. or A)
             r'answer.*?([ABCDE])',  # "answer is A"
         ]
         # ...
 ```
+
+### 2. 実験設定の一元管理
+- **問題**: マジックナンバーが散在
+- **解決**: `ExperimentConfig` クラスで設定を一元管理
 
 ### 3. 包括的な分析・可視化
 - 迎合性率、改善率、品質向上率の分析
@@ -193,10 +262,20 @@ class ImprovedAnswerExtractor:
 - 特徴活性化の変化
 - 迎合性 vs 改善の比較
 
-## 🔍 各ファイルの詳細説明
+## 🔍 使用例
 
-### メイン実行ファイル
+### ノートブック版での設定変更
+```python
+# セル1: 設定の変更
+config = ExperimentConfig(
+    sample_size=30,        # テスト用に少なめ
+    show_details=True,     # 詳細表示ON
+    max_new_tokens=5,      # 短い回答を強制
+    temperature=0.0        # 完全決定的
+)
+```
 
+<<<<<<< HEAD
 #### `sae_sycophancy_hybrid.py` ⭐推奨⭐
 - **用途**: 迎合性分析のメイン実行ファイル
 - **特徴**: 統合された分析機能とエラーハンドリング
@@ -205,16 +284,21 @@ class ImprovedAnswerExtractor:
   - `ImprovedAnswerExtractor`: 改善された回答抽出
   - 迎合性分析のメイン機能
   - 包括的な結果分析と可視化
+=======
+### スタンドアロン版での設定変更
+```python
+# sae_sycophancy_improved.py内で直接変更
+config = ExperimentConfig(
+    sample_size=100,
+    show_details=False,    # 大量データ処理時は詳細表示OFF
+    model_name="pythia-160m-deduped"
+)
+```
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 
-#### `sae_sycophancy_analysis_clean.ipynb`
-- **用途**: Notebook形式での詳細分析
-- **特徴**: `.py`からクラスと関数をインポートして使用
-- **実行方法**: Jupyter Notebookで開いて実行
-- **適用場面**: 
-  - 対話的な分析を行いたい場合
-  - 途中結果を確認しながら進めたい場合
-  - 設定を細かく調整したい場合
+## 📈 期待される改善効果
 
+<<<<<<< HEAD
 ### 設定・テストファイル
 
 #### `experiment_config.py` 🆕
@@ -252,12 +336,18 @@ class ImprovedAnswerExtractor:
   - タスクの詳細な実装
   - 結果の深い分析
   - 問題ケースの調査
+=======
+1. **抽出成功率の向上**: UNKNOWN回答の大幅減少
+2. **迎合性検出精度の向上**: より正確な迎合性パターンの特定
+3. **分析の包括性**: 多角的な分析による深い洞察
+4. **設定の柔軟性**: 様々な実験条件での簡単なテスト
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 
 ## 🛠️ トラブルシューティング
 
 ### よくある問題と解決法
 
-#### 1. UNKNOWN回答が多い場合
+#### 1. UNKNOWN回答が多い
 ```python
 config = ExperimentConfig(
     max_new_tokens=3,      # さらに短く
@@ -266,7 +356,7 @@ config = ExperimentConfig(
 )
 ```
 
-#### 2. メモリ不足の場合
+#### 2. メモリ不足
 ```python
 config = ExperimentConfig(
     sample_size=10,        # サンプル数を減らす
@@ -274,7 +364,7 @@ config = ExperimentConfig(
 )
 ```
 
-#### 3. 処理が遅い場合
+#### 3. 処理が遅い
 ```python
 config = ExperimentConfig(
     show_details=False,    # 詳細表示をOFF
@@ -282,6 +372,7 @@ config = ExperimentConfig(
 )
 ```
 
+<<<<<<< HEAD
 #### 4. SAE Lensが見つからない場合
 ```bash
 # インストール
@@ -318,36 +409,21 @@ ls -la eval_dataset/are_you_sure.jsonl
 2. `experiment_config.py` で新しい設定を追加
 3. `sae_sycophancy_hybrid.py` に新機能を統合
 
+=======
+>>>>>>> parent of 98f59f1 (フォルダの整理)
 ## 📚 参考情報
 
-- **SAE Lens**: [Sparse Autoencoder分析ライブラリ](https://github.com/jbloomAus/SAELens)
-- **Pythia**: [実験に使用しているLLMシリーズ](https://github.com/EleutherAI/pythia)
+- **SAE Lens**: Sparse Autoencoder分析ライブラリ
+- **Pythia**: 実験に使用しているLLMシリーズ
 - **Are You Sure データセット**: 迎合性分析用のベンチマークデータ
-- **Transformer Lens**: [モデル分析用ライブラリ](https://github.com/neelnanda-io/TransformerLens)
 
-## 🤝 貢献・カスタマイズ
+## 🤝 貢献
 
-改善提案やカスタマイズは、以下の観点で行ってください：
-
-### 1. 分析精度の向上
-- 単一選択肢抽出の精度向上
-- 新しいパターンマッチング手法
-- より効果的なプロンプト戦略
-
-### 2. 可視化の改善
-- より直感的なグラフ
-- インタラクティブな可視化
-- 詳細なSAE特徴分析
-
-### 3. 実験設定の拡張
-- 新しいモデルサポート
-- 異なるデータセット対応
-- カスタム分析メトリクス
-
-### 4. パフォーマンス最適化
-- メモリ使用量の削減
-- 処理速度の向上
-- バッチ処理の改善
+改善提案やバグ報告は、以下の観点でお願いします：
+1. 単一選択肢抽出の精度向上
+2. 新しいSAE特徴分析手法
+3. 可視化の改善
+4. 実験設定の拡張
 
 ---
 
