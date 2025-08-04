@@ -212,9 +212,88 @@ class SycophancyAnalyzer:
         
         return None
     
+    # def get_model_response(self, prompt: str) -> str:
+    #     """
+    #     モデルからの応答を取得
+        
+    #     Args:
+    #         prompt: 入力プロンプト
+            
+    #     Returns:
+    #         モデルの応答テキスト
+    #     """
+    #     try:
+    #         # tokenizerの存在確認
+    #         if self.tokenizer is None:
+    #             raise ValueError("Tokenizer is None. Please ensure the model is properly loaded.")
+            
+    #         # トークン化
+    #         inputs = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
+            
+    #         # 生成（HookedTransformerに適した設定）
+    #         with torch.no_grad():
+    #             # HookedTransformerの場合、generateメソッドが利用できない可能性があるため
+    #             # より基本的な方法を使用
+    #             try:
+    #                 outputs = self.model.generate(
+    #                     inputs,
+    #                     max_new_tokens=self.config.generation.max_new_tokens,
+    #                     temperature=self.config.generation.temperature,
+    #                     do_sample=self.config.generation.do_sample,
+    #                     top_p=self.config.generation.top_p
+    #                     # pad_token_idは HookedTransformer でサポートされていないため削除
+    #                 )
+    #             except AttributeError:
+    #                 # generateメソッドが存在しない場合の代替手段
+    #                 print("⚠️ generateメソッドが利用できません。基本的な推論を使用します")
+                    
+    #                 # 1つのトークンだけ生成（簡略化）
+    #                 logits = self.model(inputs)
+                    
+    #                 # 最後のトークンの予測を取得
+    #                 next_token_logits = logits[0, -1, :]
+                    
+    #                 # 温度スケーリング
+    #                 if self.config.generation.temperature > 0:
+    #                     next_token_logits = next_token_logits / self.config.generation.temperature
+                    
+    #                 # サンプリング
+    #                 if self.config.generation.do_sample:
+    #                     # top-pサンプリング
+    #                     sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+    #                     cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                        
+    #                     # top-p閾値を超えるトークンを除外
+    #                     sorted_indices_to_remove = cumulative_probs > self.config.generation.top_p
+    #                     sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+    #                     sorted_indices_to_remove[0] = 0
+                        
+    #                     indices_to_remove = sorted_indices[sorted_indices_to_remove]
+    #                     next_token_logits[indices_to_remove] = -float('inf')
+                        
+    #                     # サンプリング
+    #                     probs = torch.softmax(next_token_logits, dim=-1)
+    #                     next_token = torch.multinomial(probs, num_samples=1)
+    #                 else:
+    #                     # グリーディデコーディング
+    #                     next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                    
+    #                 # 結果を適切な形式に変換
+    #                 outputs = torch.cat([inputs, next_token.unsqueeze(0)], dim=1)
+            
+    #         # 新しく生成された部分のみを取得
+    #         generated_part = outputs[0][inputs.shape[1]:]
+    #         response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+            
+    #         return response.strip()
+            
+    #     except Exception as e:
+    #         print(f"❌ 応答生成エラー: {e}")
+    #         return ""
+    
     def get_model_response(self, prompt: str) -> str:
         """
-        モデルからの応答を取得
+        モデルからの応答を取得（改善版）
         
         Args:
             prompt: 入力プロンプト
@@ -229,66 +308,104 @@ class SycophancyAnalyzer:
             
             # トークン化
             inputs = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
+            original_length = inputs.shape[1]
             
-            # 生成（HookedTransformerに適した設定）
+            # 生成パラメータの設定
+            max_new_tokens = self.config.generation.max_new_tokens
+            temperature = self.config.generation.temperature
+            do_sample = self.config.generation.do_sample
+            top_p = self.config.generation.top_p
+            
+            print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン)")
+            
             with torch.no_grad():
-                # HookedTransformerの場合、generateメソッドが利用できない可能性があるため
-                # より基本的な方法を使用
                 try:
+                    # HookedTransformerのgenerateメソッドを試行
                     outputs = self.model.generate(
                         inputs,
-                        max_new_tokens=self.config.generation.max_new_tokens,
-                        temperature=self.config.generation.temperature,
-                        do_sample=self.config.generation.do_sample,
-                        top_p=self.config.generation.top_p
-                        # pad_token_idは HookedTransformer でサポートされていないため削除
+                        max_new_tokens=max_new_tokens,
+                        temperature=temperature,
+                        do_sample=do_sample,
+                        top_p=top_p,
+                        # pad_token_id=self.tokenizer.eos_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                        # return_dict_in_generate=True,
+                        # output_scores=True
                     )
-                except AttributeError:
-                    # generateメソッドが存在しない場合の代替手段
-                    print("⚠️ generateメソッドが利用できません。基本的な推論を使用します")
                     
-                    # 1つのトークンだけ生成（簡略化）
-                    logits = self.model(inputs)
-                    
-                    # 最後のトークンの予測を取得
-                    next_token_logits = logits[0, -1, :]
-                    
-                    # 温度スケーリング
-                    if self.config.generation.temperature > 0:
-                        next_token_logits = next_token_logits / self.config.generation.temperature
-                    
-                    # サンプリング
-                    if self.config.generation.do_sample:
-                        # top-pサンプリング
-                        sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                        cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-                        
-                        # top-p閾値を超えるトークンを除外
-                        sorted_indices_to_remove = cumulative_probs > self.config.generation.top_p
-                        sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
-                        sorted_indices_to_remove[0] = 0
-                        
-                        indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                        next_token_logits[indices_to_remove] = -float('inf')
-                        
-                        # サンプリング
-                        probs = torch.softmax(next_token_logits, dim=-1)
-                        next_token = torch.multinomial(probs, num_samples=1)
+                    # 生成されたトークンを取得
+                    if hasattr(outputs, 'sequences'):
+                        generated_tokens = outputs.sequences[0]
                     else:
-                        # グリーディデコーディング
-                        next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                        generated_tokens = outputs
+                        
+                except (AttributeError, TypeError) as e:
+                    print(f"⚠️ generateメソッドが利用できません ({e})。自作生成ループを使用します")
                     
-                    # 結果を適切な形式に変換
-                    outputs = torch.cat([inputs, next_token.unsqueeze(0)], dim=1)
-            
-            # 新しく生成された部分のみを取得
-            generated_part = outputs[0][inputs.shape[1]:]
-            response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
-            
-            return response.strip()
-            
+                    # 自作の生成ループ
+                    generated_tokens = inputs.clone()
+                    
+                    for step in range(max_new_tokens):
+                        # 現在のシーケンスでモデルを実行
+                        logits = self.model(generated_tokens)
+                        
+                        # 最後のトークンの予測を取得
+                        next_token_logits = logits[0, -1, :]
+                        
+                        # 温度スケーリング
+                        if temperature > 0 and temperature != 1.0:
+                            next_token_logits = next_token_logits / temperature
+                        
+                        # サンプリングまたはグリーディ選択
+                        if do_sample and temperature > 0:
+                            # top-pサンプリング
+                            sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                            
+                            # top-p閾値を超えるトークンを除外
+                            sorted_indices_to_remove = cumulative_probs > top_p
+                            if sorted_indices_to_remove.sum() > 1:
+                                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                                sorted_indices_to_remove[0] = False
+                            
+                            # 除外するインデックスを元の順序に戻す
+                            indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                            next_token_logits[indices_to_remove] = -float('inf')
+                            
+                            # サンプリング
+                            probs = torch.softmax(next_token_logits, dim=-1)
+                            next_token = torch.multinomial(probs, num_samples=1)
+                        else:
+                            # グリーディデコーディング
+                            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                        
+                        # 新しいトークンをシーケンスに追加
+                        generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
+                        
+                        # EOSトークンで停止
+                        if next_token.item() == self.tokenizer.eos_token_id:
+                            print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                            break
+                        
+                        # 進行状況の表示（10ステップごと）
+                        if (step + 1) % 10 == 0:
+                            print(f"📊 生成進行状況: {step + 1}/{max_new_tokens} トークン")
+                
+                # 新しく生成された部分のみを取得
+                generated_part = generated_tokens[0][original_length:]
+                
+                # デコード
+                response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                
+                print(f"✅ 生成完了: {len(generated_part)}トークン生成")
+                print(f"📝 生成された応答: {response}")
+                
+                return response.strip()
+                
         except Exception as e:
             print(f"❌ 応答生成エラー: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
     
     def get_sae_activations(self, text: str) -> torch.Tensor:
@@ -409,8 +526,8 @@ class SycophancyAnalyzer:
                 
             initial_answer = self.extract_answer_letter(initial_response)
             
-            # 挑戦的質問のプロンプト作成
-            challenge_prompt = initial_prompt + f"\n\nYour answer: {initial_response}\n" + self.config.prompts.challenge_prompt
+            # 挑戦的質問のプロンプト作成（initial_promptではなく、質問と選択肢のみを使用）
+            challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.challenge_prompt}"
             
             # 挑戦後の応答取得（タイムアウト対策）
             challenge_response = self.get_model_response(challenge_prompt)
