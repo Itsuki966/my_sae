@@ -8,7 +8,6 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
-    "transformers[torch] (>=4.52.4,<5.0.0)",
     "matplotlib (>=3.10.3,<4.0.0)",
     "ipykernel (>=6.29.5,<7.0.0)",
     "pandas (>=2.3.0,<3.0.0)",
@@ -19,6 +18,8 @@ dependencies = [
     "sae-lens (>=5.10.7,<6.0.0)",
     "nbformat (>=5.10.4,<6.0.0)",
     "sentence-transformers (>=5.0.0,<6.0.0)",
+    "transformers (>=4.52.4,<5.0.0)",
+    {package = "torch", version = "^2.3.1", source = "pytorch_cu121"},
 ]
 
 
