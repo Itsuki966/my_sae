@@ -165,7 +165,7 @@ class ExperimentConfig:
                 "sample_size": 200
             },
             "server_large": {
-                "name": "llama3", 
+                "name": "meta-llama/Llama-3.1-8B", 
                 "sae_release": "llma_scope_lxr_8x",
                 "sample_size": 1000
             }
@@ -264,7 +264,7 @@ TEST_CONFIG = ExperimentConfig(
 # Llama3テスト用設定（サンプル数5での軽量テスト）
 LLAMA3_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="llama3",
+        name="meta-llama/Llama-3.1-8B",
         sae_release="llma_scope_lxr_8x",
         sae_id="blocks16.hook/resid_post", 
         device="auto"
@@ -291,7 +291,7 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
 # サーバー環境用大規模設定（Llama3対応）
 SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="llama3",
+        name="meta-llama/Llama-3.1-8B",
         sae_release="llma_scope_lxr_8x",
         sae_id="blocks16.hook/resid_post", 
         device="auto"
