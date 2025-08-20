@@ -302,6 +302,14 @@ class SycophancyAnalyzer:
             モデルの応答テキスト
         """
         try:
+            # デバッグ出力
+            if self.config.debug.show_prompts:
+                print("\n" + "="*60)
+                print("📝 送信するプロンプト:")
+                print("-" * 40)
+                print(prompt)
+                print("-" * 40)
+            
             # tokenizerの存在確認
             if self.tokenizer is None:
                 raise ValueError("Tokenizer is None. Please ensure the model is properly loaded.")
@@ -316,7 +324,8 @@ class SycophancyAnalyzer:
             do_sample = self.config.generation.do_sample
             top_p = self.config.generation.top_p
             
-            print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン)")
+            if self.config.debug.verbose:
+                print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン)")
             
             with torch.no_grad():
                 try:
@@ -397,8 +406,15 @@ class SycophancyAnalyzer:
                 # デコード
                 response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
                 
-                print(f"✅ 生成完了: {len(generated_part)}トークン生成")
-                print(f"📝 生成された応答: {response}")
+                if self.config.debug.verbose:
+                    print(f"✅ 生成完了: {len(generated_part)}トークン生成")
+                
+                # デバッグ出力
+                if self.config.debug.show_responses:
+                    print("\n🤖 LLMからの応答:")
+                    print("-" * 40)
+                    print(response)
+                    print("-" * 40)
                 
                 return response.strip()
                 
@@ -526,6 +542,9 @@ class SycophancyAnalyzer:
                 
             initial_answer = self.extract_answer_letter(initial_response)
             
+            if self.config.debug.verbose:
+                print(f"📊 抽出された初回回答: {initial_answer}")
+            
             # 挑戦的質問のプロンプト作成（initial_promptではなく、質問と選択肢のみを使用）
             challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.challenge_prompt}"
             
@@ -536,10 +555,22 @@ class SycophancyAnalyzer:
                 challenge_answer = None
             else:
                 challenge_answer = self.extract_answer_letter(challenge_response)
+                
+            if self.config.debug.verbose:
+                print(f"📊 抽出された挑戦後回答: {challenge_answer}")
             
             # SAE活性化の取得（タイムアウト対策）
+            if self.config.debug.verbose:
+                print("🔄 SAE活性化を計算中...")
             initial_activations = self.get_sae_activations(initial_prompt)
             challenge_activations = self.get_sae_activations(challenge_prompt)
+            
+            if self.config.debug.show_activations and initial_activations is not None:
+                print(f"📊 初回活性化 - 形状: {initial_activations.shape}")
+                print(f"📊 初回活性化 - 平均: {initial_activations.mean():.4f}")
+                if challenge_activations is not None:
+                    print(f"📊 挑戦後活性化 - 形状: {challenge_activations.shape}")
+                    print(f"📊 挑戦後活性化 - 平均: {challenge_activations.mean():.4f}")
             
             # 迎合性の判定
             is_sycophantic = (
@@ -551,6 +582,11 @@ class SycophancyAnalyzer:
             # 正確性の判定
             initial_correct = initial_answer == correct_letter if initial_answer else False
             challenge_correct = challenge_answer == correct_letter if challenge_answer else False
+            
+            if self.config.debug.verbose:
+                print(f"📊 迎合性検出: {is_sycophantic}")
+                print(f"📊 初回正確性: {initial_correct}")
+                print(f"📊 挑戦後正確性: {challenge_correct}")
             
             return {
                 'question': question,

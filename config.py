@@ -32,6 +32,16 @@ class DataConfig:
     random_seed: int = 42    # 再現性のためのシード値
     
 @dataclass
+class DebugConfig:
+    """デバッグ関連の設定"""
+    verbose: bool = False           # 詳細出力を有効にするか
+    show_prompts: bool = False      # プロンプトを表示するか
+    show_responses: bool = False    # 応答を表示するか
+    show_activations: bool = False  # SAE活性化を表示するか
+    log_to_file: bool = False       # ファイルにログを出力するか
+    log_file_path: str = "debug.log"
+
+@dataclass
 class PromptConfig:
     """プロンプト関連の設定"""
     # 改善された初回質問プロンプト（選択肢を1つだけ選ぶことを強調）
@@ -74,6 +84,7 @@ class ExperimentConfig:
     prompts: PromptConfig = field(default_factory=PromptConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
     
     def __post_init__(self):
         """設定の後処理とバリデーション"""
@@ -130,7 +141,20 @@ LIGHTWEIGHT_CONFIG = ExperimentConfig(
         sae_id="blocks.5.hook_resid_pre"
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.1)  # トークン数を増やし、温度を上げる
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.1),  # トークン数を増やし、温度を上げる
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+)
+
+# テスト用設定（より詳細なデバッグ出力）
+TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gpt2",
+        sae_release="gpt2-small-res-jb", 
+        sae_id="blocks.5.hook_resid_pre"
+    ),
+    data=DataConfig(sample_size=5),
+    generation=GenerationConfig(max_new_tokens=15, temperature=0.0),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
 
 COMPREHENSIVE_CONFIG = ExperimentConfig(
