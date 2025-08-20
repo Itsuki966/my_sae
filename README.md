@@ -1,11 +1,17 @@
 # 🔬 LLM迎合性分析プロジェクト - マルチ環境対応版
 
 LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使用して内部メカニズムを可視化するプロジェクトです。
-**ローカル環境（Mac）と大学サーバー環境の両方に対応**。
+**ローカル環境（Mac）と大学サーバー環境の両方に対応**、**最新のLlama3モデル対応**。
 
 ## 🎯 プロジェクトの目的
 
 このプロジェクトは、LLMに答えが1つに定まっている問題（`are_you_sure.jsonl`内の問題）を解かせ、その回答に対して「本当に合ってる？」とプロンプトを送った時に、元々の回答が正しい場合であっても人間（ユーザー）の疑問・疑念によって自身の回答を変化させる（迎合する）かどうかを確認することです。
+
+## ✨ 最新の更新
+
+- **🦙 Llama3対応**: サーバー環境でLlama3モデルを使用した大規模実験が可能
+- **⚙️ 自動設定選択**: 環境に応じてGPT-2 Small/Medium/LargeまたはLlama3を自動選択
+- **🔧 設定管理改善**: SAELens公式仕様に準拠したモデル設定
 
 ## 🚀 クイックスタート
 
@@ -109,14 +115,15 @@ poetry run python sycophancy_analyzer.py
 |------|------------|-----------|----------|------|
 | **Mac（ローカル）** | GPT-2 Small | 20-50 | MPS/CPU | 開発・テスト用 |
 | **Linux GPU** | GPT-2 Medium | 200 | CUDA | 中規模実験用 |
-| **大学サーバー** | GPT-2 Large | 1000 | CUDA | 大規模実験用 |
+| **大学サーバー** | **Llama3** | 1000 | CUDA | **大規模実験用（最新対応）** |
 
 ### 自動環境検出
 
 プロジェクトは実行環境を自動検出し、最適な設定を選択します：
 
-- **macOS**: MPS（利用可能時）またはCPU、軽量設定
-- **Linux + GPU**: CUDA、中規模または大規模設定  
+- **macOS**: MPS（利用可能時）またはCPU、軽量設定（GPT-2 Small）
+- **Linux + GPU（8GB未満）**: CUDA、中規模設定（GPT-2 Medium）
+- **Linux + GPU（16GB以上）**: CUDA、大規模設定（**Llama3**）
 - **Linux + CPU**: CPU、軽量設定
 
 ## 📁 ファイル構成
@@ -333,10 +340,18 @@ poetry run jupyter notebook sycophancy_analysis_improved.ipynb
 ```python
 from config import ModelConfig
 
+# GPT-2 Small（ローカル・軽量実験用）
 model_config = ModelConfig(
     name="gpt2",                      # 利用するLLMモデル
     sae_release="gpt2-small-res-jb",   # SAEリリース
-    sae_id="blocks.8.hook_resid_post"  # SAE ID（層の指定）
+    sae_id="blocks.5.hook_resid_pre"   # SAE ID（層の指定）
+)
+
+# Llama3（大規模サーバー実験用）
+llama3_config = ModelConfig(
+    name="llama3",                     # Llama3モデル
+    sae_release="llma_scope_lxr_8x",   # Llama3用SAEリリース
+    sae_id="blocks16.hook/resid_post"  # Llama3用SAE ID
 )
 ```
 
@@ -378,6 +393,42 @@ prompt_config = PromptConfig(
         "Please reconsider and give me your final answer as just the letter."
     )
 )
+```
+
+### 5. プリセット設定の活用
+
+プロジェクトには環境に最適化された複数のプリセット設定が用意されています：
+
+```python
+from config import (
+    MAC_CONFIG,           # Mac環境用軽量設定
+    LIGHTWEIGHT_CONFIG,   # 汎用軽量設定
+    TEST_CONFIG,         # テスト用設定（詳細デバッグ）
+    SERVER_MEDIUM_CONFIG, # サーバー中規模設定（GPT-2 Medium）
+    SERVER_LARGE_CONFIG   # サーバー大規模設定（Llama3）
+)
+
+# 使用例
+from sycophancy_analyzer import analyze_sycophancy
+
+# Mac環境で軽量実行
+results = analyze_sycophancy(MAC_CONFIG)
+
+# サーバーでLlama3を使用した大規模実験
+results = analyze_sycophancy(SERVER_LARGE_CONFIG)
+```
+
+### 6. 自動設定選択
+
+環境に応じて最適な設定を自動選択する機能も利用できます：
+
+```python
+from config import get_auto_config
+
+# 環境を自動検出して最適な設定を取得
+config = get_auto_config()
+print(f"選択されたモデル: {config.model.name}")
+print(f"サンプルサイズ: {config.data.sample_size}")
 ```
 
 ## 📊 分析結果の解釈

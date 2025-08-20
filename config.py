@@ -132,10 +132,11 @@ class ExperimentConfig:
                 self.data.sample_size = 50
             
             #小さなモデルを使用
-            if "large" in self.model.name:
+            if "large" in self.model.name or "llama" in self.model.name.lower():
                 print("⚠️ Mac環境のため、小さなモデルに変更します")
                 self.model.name = "gpt2"
                 self.model.sae_release = "gpt2-small-res-jb"
+                self.model.sae_id = "blocks.5.hook_resid_pre"
         
         # GPU利用可能な場合はバッチサイズを調整
         if torch.cuda.is_available() and torch.cuda.device_count() > 0:
@@ -164,8 +165,8 @@ class ExperimentConfig:
                 "sample_size": 200
             },
             "server_large": {
-                "name": "gpt2-large", 
-                "sae_release": "gpt2-large-res-jb",
+                "name": "llama3", 
+                "sae_release": "llma_scope_lxr_8x",
                 "sample_size": 1000
             }
         }
@@ -273,12 +274,12 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
-# サーバー環境用大規模設定
+# サーバー環境用大規模設定（Llama3対応）
 SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="gpt2-large",
-        sae_release="gpt2-large-res-jb",
-        sae_id="blocks.5.hook_resid_pre", 
+        name="llama3",
+        sae_release="llma_scope_lxr_8x",
+        sae_id="blocks16.hook/resid_post", 
         device="auto"
     ),
     data=DataConfig(sample_size=1000),
