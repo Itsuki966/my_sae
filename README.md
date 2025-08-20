@@ -1,27 +1,138 @@
-# 🔬 LLM迎合性分析プロジェクト - 改善版
+# 🔬 LLM迎合性分析プロジェクト - マルチ環境対応版
 
 LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使用して内部メカニズムを可視化するプロジェクトです。
+**ローカル環境（Mac）と大学サーバー環境の両方に対応**。
 
 ## 🎯 プロジェクトの目的
 
 このプロジェクトは、LLMに答えが1つに定まっている問題（`are_you_sure.jsonl`内の問題）を解かせ、その回答に対して「本当に合ってる？」とプロンプトを送った時に、元々の回答が正しい場合であっても人間（ユーザー）の疑問・疑念によって自身の回答を変化させる（迎合する）かどうかを確認することです。
 
-### 主要な改善点（2025年8月版）
+## 🚀 クイックスタート
 
-1. **プロンプト改善**: 選択肢を1つだけ選ぶように明確化された指示
-2. **設定管理**: 実験設定の一元管理とカスタマイズ性向上
-3. **エラーハンドリング**: より堅牢なエラー処理とpad_token_id問題の解決
-4. **可視化強化**: 包括的で理解しやすい分析結果の表示
-5. **分析深化**: SAE特徴と迎合性の関係をより詳細に分析
+### 1. 環境セットアップ（必須）
+
+このプロジェクトは**Poetry依存関係グループ機能**を使用して、サーバー環境とローカル環境を効率的に管理します。
+
+#### 📊 依存関係の分類
+
+**本番用依存関係** (`[tool.poetry.dependencies]`)
+- PyTorch、Transformers、SAE-lens等のコア機能
+- データ処理ライブラリ (pandas, numpy)  
+- 分析結果出力用の基本ライブラリ (plotly)
+- **サーバー・ローカル両環境で必要**
+
+**開発用依存関係** (`[tool.poetry.group.dev.dependencies]`)
+- Jupyter Notebook環境 (ipykernel, notebook)
+- 高度な可視化ライブラリ (matplotlib, seaborn)
+- 開発ツール (pytest, black, mypy)
+- **ローカル環境でのみ必要**
+
+#### 🖥️ 環境別インストール方法
+
+**サーバー環境（GPUサーバー・計算ノード）**
+```bash
+# 本番用依存関係のみをインストール（軽量・高速）
+poetry install --no-root
+
+# 確認コマンド
+python -c "import torch, sae_lens, pandas; print('✅ サーバー環境セットアップ完了')"
+```
+
+**ローカル環境（Mac・開発マシン）**
+```bash
+# 全依存関係をインストール（Jupyter環境含む）
+poetry install
+
+# Jupyter環境の確認
+jupyter --version
+python -c "import matplotlib, seaborn; print('✅ ローカル環境セットアップ完了')"
+```
+
+#### 🔄 自動セットアップ（推奨）
+
+```bash
+# 環境を自動検出してセットアップ
+python setup_environment.py
+```
+
+### 2. 実行方法
+
+#### 🖥️ サーバー環境での実行
+
+```bash
+# 軽量設定で直接実行
+python sycophancy_analyzer.py
+
+# 大規模実験（GPUサーバー向け）
+LARGE_SCALE=true python sycophancy_analyzer.py
+
+# 結果の確認（サーバー）
+ls -la results/
+```
+
+#### 💻 ローカル環境での実行
+
+**Python スクリプト実行**
+```bash
+# 軽量テスト実行
+python sycophancy_analyzer.py
+
+# 動作確認テスト
+python test_new_files.py
+```
+
+**Jupyter Notebook実行**
+```bash
+# Jupyter環境起動
+jupyter notebook
+
+# 推奨ノートブック
+sycophancy_analysis_improved.ipynb
+```
+
+```bash
+# テスト実行
+poetry run python test.py
+
+# Jupyter Notebook で対話的分析
+poetry run jupyter notebook
+
+# 直接分析実行
+poetry run python sycophancy_analyzer.py
+```
+
+## 🖥️ 環境対応
+
+### 対応環境
+
+| 環境 | モデルサイズ | サンプル数 | デバイス | 説明 |
+|------|------------|-----------|----------|------|
+| **Mac（ローカル）** | GPT-2 Small | 20-50 | MPS/CPU | 開発・テスト用 |
+| **Linux GPU** | GPT-2 Medium | 200 | CUDA | 中規模実験用 |
+| **大学サーバー** | GPT-2 Large | 1000 | CUDA | 大規模実験用 |
+
+### 自動環境検出
+
+プロジェクトは実行環境を自動検出し、最適な設定を選択します：
+
+- **macOS**: MPS（利用可能時）またはCPU、軽量設定
+- **Linux + GPU**: CUDA、中規模または大規模設定  
+- **Linux + CPU**: CPU、軽量設定
 
 ## 📁 ファイル構成
 
-### 🆕 新規作成ファイル（推奨使用）
+### 🆕 重要ファイル
 
-#### 🚀 メイン分析ツール
-- **`sycophancy_analyzer.py`** - 改善版メイン分析スクリプト（単独実行可能）
-- **`sycophancy_analysis_improved.ipynb`** - 改善版Jupyterノートブック（対話的分析）
-- **`config.py`** - 実験設定管理モジュール（マジックナンバー対策）
+#### 🚀 環境設定・実行
+- **`setup_environment.py`** - 環境自動設定スクリプト（**最初に実行**）
+- **`env_config.py`** - 環境固有設定（自動生成）
+- **`run_test.sh`** - テスト実行スクリプト（自動生成）
+- **`start_jupyter.sh`** - Jupyter起動スクリプト（自動生成）
+
+#### � メイン分析ツール
+- **`sycophancy_analyzer.py`** - 改善版メイン分析スクリプト
+- **`sycophancy_analysis_improved.ipynb`** - 改善版Jupyterノートブック
+- **`config.py`** - 実験設定管理モジュール（マルチ環境対応）
 
 ### 📊 既存ファイル（参考・バックアップ）
 
@@ -138,48 +249,83 @@ plots/
 ├── heatmap.html                        # SAE特徴ヒートマップ
 └── accuracy_comparison.html            # 正確性比較グラフ
 ```
-=======
-# 環境セットアップスクリプトを実行（推奨）
-python setup_environment.py
 
-# または手動でPoetry依存関係をインストール
+## 📦 Poetry依存関係グループ詳細
+
+### 🎯 依存関係の設計思想
+
+このプロジェクトでは**Poetry依存関係グループ**を活用して、異なる実行環境に最適化されたライブラリ管理を実現しています。
+
+#### 本番用依存関係 (`poetry install --no-root`)
+```bash
+# サーバー環境で実行（軽量・高速）
+poetry install --no-root
+```
+
+**含まれるライブラリ:**
+- **コア機能**: PyTorch, Transformers, SAE-lens
+- **データ処理**: pandas, numpy, datasets  
+- **基本分析**: plotly (結果出力用)
+- **ユーティリティ**: tqdm, requests
+
+**利点:**
+- ✅ Jupyter環境不要で軽量インストール
+- ✅ サーバー環境での高速セットアップ
+- ✅ 分析結果出力に必要最小限の機能
+
+#### 開発用依存関係 (`poetry install`)
+```bash
+# ローカル環境で実行（全機能）
 poetry install
 ```
 
-### 2. 軽量テスト
+**追加されるライブラリ:**
+- **Jupyter環境**: ipykernel, notebook, ipywidgets
+- **高度な可視化**: matplotlib, seaborn, japanize-matplotlib
+- **開発ツール**: pytest, black, mypy, flake8
+
+**利点:**
+- ✅ 対話的な分析・デバッグ環境
+- ✅ 豊富な可視化オプション
+- ✅ コード品質管理ツール
+
+### 🚀 推奨ワークフロー
+
+#### 研究開発フェーズ（ローカル）
 ```bash
-# 基本機能をテスト
-python sae_test_light.py
+# フル環境でセットアップ
+poetry install
+
+# Jupyter Notebookで分析
+jupyter notebook sycophancy_analysis_improved.ipynb
+
+# 設定調整・デバッグ
+python test_new_files.py
 ```
 
-### 3. 実行方法（3つの選択肢）
-
-#### オプション A: ハイブリッド版（推奨）
+#### 大規模実験フェーズ（サーバー）
 ```bash
-# Python スクリプトとして実行
-poetry run python sae_sycophancy_hybrid.py
+# 軽量環境でセットアップ
+poetry install --no-root
 
-# または Jupyter Notebook として実行
-poetry run jupyter notebook
-# ↳ sae_sycophancy_hybrid.py を .ipynb として開く
+# バッチ実行
+python sycophancy_analyzer.py
+
+# 結果確認
+ls -la results/ plots/
 ```
-
-#### オプション B: スタンドアロン版  
-```bash
-poetry run python sae_sycophancy_improved.py
 ```
 
 #### オプション C: 従来のNotebook版
 ```bash
-poetry run jupyter notebook sae_sycophancy_analysis_clean.ipynb
+poetry run jupyter notebook sycophancy_analysis_improved.ipynb
 ```
 
 ## ⚙️ 設定カスタマイズ
 
 ### 主要な設定項目
 
-実験設定は各ファイルの `ExperimentConfig` クラスで一元管理されています：
->>>>>>> parent of 98f59f1 (フォルダの整理)
+実験設定は`config.py`の `ExperimentConfig` クラスで一元管理されています：
 
 ## ⚙️ 重要な実験設定項目
 
@@ -427,26 +573,19 @@ python sae_test_light.py
 ### 設定例
 
 ```python
-<<<<<<< HEAD
 # 高速プロトタイプ用
 quick_config = ExperimentConfig(
-    n_samples=10,
-    batch_size=2,
-    verbose=True
+    data=DataConfig(sample_size=10),
+    generation=GenerationConfig(max_new_tokens=5, temperature=0.0),
+    debug=DebugConfig(verbose=True)
 )
 
 # 本格分析用
 full_config = ExperimentConfig(
-    n_samples=1000,
-    batch_size=16,
-    n_top_features=50,
-    detailed_analysis=True
-=======
-config = ExperimentConfig(
-    max_new_tokens=5,      # より短い回答を強制
-    temperature=0.0,       # 完全に決定的
-    repetition_penalty=1.2 # 繰り返しをより強く抑制
->>>>>>> parent of 98f59f1 (フォルダの整理)
+    data=DataConfig(sample_size=1000),
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.1),
+    analysis=AnalysisConfig(top_k_features=50),
+    debug=DebugConfig(verbose=False)
 )
 ```
 
@@ -522,32 +661,20 @@ config = ExperimentConfig(
   - `ImprovedAnswerExtractor`: 改善された回答抽出
   - 迎合性分析のメイン機能
   - 包括的な結果分析と可視化
-=======
-### スタンドアロン版での設定変更
-```python
-# sae_sycophancy_improved.py内で直接変更
-config = ExperimentConfig(
-    sample_size=100,
-    show_details=False,    # 大量データ処理時は詳細表示OFF
-    model_name="pythia-160m-deduped"
-)
-```
->>>>>>> parent of 98f59f1 (フォルダの整理)
 
 ## 📈 期待される改善効果
 
-<<<<<<< HEAD
 ### 設定・テストファイル
 
-#### `experiment_config.py` 🆕
+#### `config.py` 🆕
 - **用途**: 実験設定の統合管理
 - **特徴**: マジックナンバーを排除し、設定を集約
 - **含まれる機能**:
   - `ExperimentConfig`: 設定データクラス
   - プリセット設定（クイックテスト、フル分析、デバッグ）
-  - バリデーション機能
+  - 環境自動検出機能
 
-#### `sae_test_light.py` 🆕
+#### `test_new_files.py` 🆕
 - **用途**: 軽量テスト版（動作確認用）
 - **特徴**: 基本機能のみ実装、高速実行
 - **実行方法**: `python sae_test_light.py`
@@ -610,7 +737,6 @@ config = ExperimentConfig(
 )
 ```
 
-<<<<<<< HEAD
 #### 4. SAE Lensが見つからない場合
 ```bash
 # インストール
@@ -632,20 +758,19 @@ ls -la eval_dataset/are_you_sure.jsonl
 ## 🎯 推奨ワークフロー
 
 ### 初心者向け
-1. `sae_test_light.py` で基本機能の動作確認
+1. `test_new_files.py` で基本機能の動作確認
 2. `tutorial_2_0.ipynb` でSAEの基本を学習
-3. `sae_sycophancy_hybrid.py` で迎合性分析を実行
+3. `sycophancy_analyzer.py` で迎合性分析を実行
 
 ### 研究者向け
-1. `experiment_config.py` で実験設定をカスタマイズ
-2. `sae_sycophancy_hybrid.py` で基本的な分析を実行
-3. `sae_sycophancy_analysis_clean.ipynb` で詳細な対話的分析
-4. `sae_are_you_sure_analysis.ipynb` で深い分析と検証
+1. `config.py` で実験設定をカスタマイズ
+2. `sycophancy_analyzer.py` で基本的な分析を実行
+3. `sycophancy_analysis_improved.ipynb` で詳細な対話的分析
 
 ### 開発者向け
-1. `sae_test_light.py` で機能テスト
-2. `experiment_config.py` で新しい設定を追加
-3. `sae_sycophancy_hybrid.py` に新機能を統合
+1. `test_new_files.py` で機能テスト
+2. `config.py` で新しい設定を追加
+3. `sycophancy_analyzer.py` に新機能を統合
 
 ## 🗂️ 変更履歴とファイル整理
 
