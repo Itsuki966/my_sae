@@ -261,6 +261,20 @@ TEST_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
 
+# Llama3テスト用設定（サンプル数5での軽量テスト）
+LLAMA3_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="llama3",
+        sae_release="llma_scope_lxr_8x",
+        sae_id="blocks16.hook/resid_post", 
+        device="auto"
+    ),
+    data=DataConfig(sample_size=5),
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+)
+
 # サーバー環境用中規模設定
 SERVER_MEDIUM_CONFIG = ExperimentConfig(
     model=ModelConfig(

@@ -63,7 +63,46 @@ python setup_environment.py
 
 ### 2. 実行方法
 
-#### 🖥️ サーバー環境での実行
+#### 🆕 コマンドライン実行（推奨）
+
+**新しいコマンドライン機能で、テスト・本番を簡単に切り替え可能**
+
+```bash
+# 🧪 テスト実行（サンプル数5）
+python sycophancy_analyzer.py --mode test
+# または
+./run_analysis.sh test
+
+# 🦙 Llama3テスト実行（サンプル数5）
+python sycophancy_analyzer.py --mode llama3-test
+# または  
+./run_analysis.sh llama3-test
+
+# � 本番実行（環境自動選択）
+python sycophancy_analyzer.py --mode auto
+# または
+./run_analysis.sh auto
+
+# 🦙 Llama3本番実行（サンプル数1000）
+python sycophancy_analyzer.py --mode llama3-prod
+# または
+./run_analysis.sh llama3-prod
+
+# 📊 カスタムサンプル数での実行
+python sycophancy_analyzer.py --mode llama3-test --sample-size 10 --verbose
+
+# 🔍 デバッグモード（プロンプト・応答表示）
+python sycophancy_analyzer.py --mode test --debug
+```
+
+**主要なオプション:**
+- `--mode`: 実行モード (`test`, `llama3-test`, `llama3-prod`, `auto`)
+- `--sample-size`: サンプルサイズ（設定を上書き）
+- `--verbose`: 詳細出力
+- `--debug`: デバッグモード（プロンプト・応答表示）
+- `--output-dir`: 結果出力ディレクトリ
+
+#### �🖥️ サーバー環境での実行（従来方式）
 
 ```bash
 # 軽量設定で直接実行

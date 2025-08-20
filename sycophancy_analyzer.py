@@ -22,6 +22,8 @@ from tqdm import tqdm
 from typing import List, Dict, Any, Tuple, Optional
 from collections import Counter
 import warnings
+import argparse
+import sys
 warnings.filterwarnings('ignore')
 
 # SAE Lens関連のインポート
@@ -34,7 +36,11 @@ except ImportError:
     SAE_AVAILABLE = False
 
 # ローカル設定のインポート
-from config import ExperimentConfig, DEFAULT_CONFIG
+from config import (
+    ExperimentConfig, DEFAULT_CONFIG, 
+    LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
+    TEST_CONFIG, get_auto_config
+)
 
 class SycophancyAnalyzer:
     """LLM迎合性分析のメインクラス"""
@@ -942,18 +948,110 @@ class SycophancyAnalyzer:
             'figures': figures
         }
 
+def parse_arguments():
+    """コマンドライン引数の解析"""
+    parser = argparse.ArgumentParser(description='LLM迎合性分析スクリプト')
+    
+    parser.add_argument(
+        '--mode', '-m',
+        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'auto'],
+        default='auto',
+        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), auto(環境自動選択)'
+    )
+    
+    parser.add_argument(
+        '--sample-size', '-s',
+        type=int,
+        default=None,
+        help='サンプルサイズ（設定を上書き）'
+    )
+    
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='詳細出力を有効にする'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='デバッグモードを有効にする（プロンプトや応答を表示）'
+    )
+    
+    parser.add_argument(
+        '--output-dir', '-o',
+        type=str,
+        default='results',
+        help='結果出力ディレクトリ'
+    )
+    
+    return parser.parse_args()
+
+def get_config_from_mode(mode: str, args) -> ExperimentConfig:
+    """モードに応じた設定を取得"""
+    print(f"🔧 実行モード: {mode}")
+    
+    if mode == 'test':
+        config = TEST_CONFIG
+        print("📋 GPT-2 テストモード（サンプル数5）")
+    elif mode == 'production':
+        config = DEFAULT_CONFIG
+        print("🚀 GPT-2 本番モード")
+    elif mode == 'llama3-test':
+        config = LLAMA3_TEST_CONFIG
+        print("🦙 Llama3 テストモード（サンプル数5）")
+    elif mode == 'llama3-prod':
+        config = SERVER_LARGE_CONFIG
+        print("🦙 Llama3 本番モード（大規模実験）")
+    elif mode == 'auto':
+        config = get_auto_config()
+        print("⚙️ 環境自動選択モード")
+        print(f"   選択されたモデル: {config.model.name}")
+    else:
+        config = DEFAULT_CONFIG
+        print("⚠️ 不明なモード、デフォルト設定を使用")
+    
+    # コマンドライン引数での上書き
+    if args.sample_size is not None:
+        config.data.sample_size = args.sample_size
+        print(f"📊 サンプルサイズを{args.sample_size}に設定")
+    
+    if args.verbose or args.debug:
+        config.debug.verbose = True
+        config.debug.show_prompts = args.debug
+        config.debug.show_responses = args.debug
+        print("🔍 詳細出力モードを有効化")
+    
+    return config
+
 def main():
     """メイン実行関数"""
     print("🔬 LLM迎合性分析スクリプト")
     print("=" * 50)
     
+    # コマンドライン引数の解析
+    args = parse_arguments()
+    
+    # 設定の取得
+    config = get_config_from_mode(args.mode, args)
+    
     # 設定の表示
-    config = DEFAULT_CONFIG
-    print(f"📋 実験設定:")
+    print(f"\n📋 実験設定:")
     print(f"  モデル: {config.model.name}")
-    print(f"  SAE: {config.model.sae_id}")
+    print(f"  SAE リリース: {config.model.sae_release}")
+    print(f"  SAE ID: {config.model.sae_id}")
     print(f"  サンプルサイズ: {config.data.sample_size}")
     print(f"  デバイス: {config.model.device}")
+    print(f"  出力ディレクトリ: {args.output_dir}")
+    
+    # 出力ディレクトリの作成
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(config.visualization.plot_directory, exist_ok=True)
+    
+    # 環境に応じた自動調整
+    config.auto_adjust_for_environment()
+    
+    print("\n🚀 分析を開始します...")
     
     # 分析器の初期化と実行
     analyzer = SycophancyAnalyzer(config)
@@ -961,16 +1059,35 @@ def main():
     try:
         results = analyzer.run_complete_analysis()
         
+        # 結果の保存
+        output_file = os.path.join(args.output_dir, f"analysis_results_{config.model.name}_{config.data.sample_size}.json")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(results['analysis'], f, indent=2, ensure_ascii=False)
+        
+        # 設定の保存
+        config_file = os.path.join(args.output_dir, f"config_{config.model.name}_{config.data.sample_size}.json")
+        config.save_to_file(config_file)
+        
         # 簡易サマリー表示
         summary = results['analysis']
-        print("\n📊 最終結果サマリー:")
+        print("\n" + "=" * 50)
+        print("📊 最終結果サマリー:")
+        print(f"  モデル: {config.model.name}")
+        print(f"  サンプル数: {config.data.sample_size}")
         print(f"  迎合率: {summary['sycophancy_rate']:.1%}")
         print(f"  初回正答率: {summary['initial_accuracy']:.1%}")
         print(f"  挑戦後正答率: {summary['challenge_accuracy']:.1%}")
+        print(f"  結果保存先: {output_file}")
+        print("=" * 50)
+        
+        print("\n✅ 分析が正常に完了しました！")
         
     except Exception as e:
-        print(f"❌ 分析実行エラー: {e}")
-        raise
+        print(f"\n❌ 分析実行エラー: {e}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
