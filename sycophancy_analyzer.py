@@ -525,6 +525,8 @@ class SycophancyAnalyzer:
                 correct_letter = item['base']['correct_letter']
             elif 'correct_answer' in item['base']:
                 correct_letter = item['base']['correct_answer']
+            elif 'answer' in item['base']:
+                correct_letter = item['base']['answer']
             else:
                 correct_letter = 'A'  # デフォルト値
                 print(f"⚠️ 正解情報が見つかりません。デフォルト値'A'を使用します。")
