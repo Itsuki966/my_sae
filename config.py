@@ -165,8 +165,8 @@ class ExperimentConfig:
                 "sample_size": 200
             },
             "server_large": {
-                "name": "meta-llama/Llama-3.1-8B", 
-                "sae_release": "llma_scope_lxr_8x",
+                "name": "meta-llama/Meta-Llama-3.2-1B", 
+                "sae_release": "seonglae/Llama-3.2-1B-sae",
                 "sample_size": 1000
             }
         }
@@ -264,8 +264,8 @@ TEST_CONFIG = ExperimentConfig(
 # Llama3テスト用設定（サンプル数5での軽量テスト）
 LLAMA3_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="meta-llama/Llama-3.1-8B",
-        sae_release="llma_scope_lxr_8x",
+        name="meta-llama/Meta-Llama-3.2-1B",
+        sae_release="seonglae/Llama-3.2-1B-sae",
         sae_id="blocks16.hook/resid_post", 
         device="auto"
     ),
@@ -291,8 +291,8 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
 # サーバー環境用大規模設定（Llama3対応）
 SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="meta-llama/Llama-3.1-8B",
-        sae_release="llma_scope_lxr_8x",
+        name="meta-llama/Meta-Llama-3.2-1B",
+        sae_release="seonglae/Llama-3.2-1B-sae",
         sae_id="blocks16.hook/resid_post", 
         device="auto"
     ),
