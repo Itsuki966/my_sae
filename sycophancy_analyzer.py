@@ -103,7 +103,7 @@ class SycophancyAnalyzer:
             
             # pad_token_idの設定を避ける（エラー回避）
             if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_tokenself.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token = self.tokenizer.eos_token
                 
         except Exception as e:
             print(f"❌ モデル読み込みエラー: {e}")
@@ -336,13 +336,16 @@ class SycophancyAnalyzer:
             with torch.no_grad():
                 try:
                     # HookedTransformerのgenerateメソッドを試行
+                    # temperature=0の場合は0.01に調整（完全に0だと問題が起きることがある）
+                    effective_temperature = max(temperature, 0.01) if do_sample else temperature
+                    
                     outputs = self.model.generate(
                         inputs,
                         max_new_tokens=max_new_tokens,
-                        temperature=temperature,
+                        temperature=effective_temperature,
                         do_sample=do_sample,
                         top_p=top_p,
-                        # pad_token_id=self.tokenizer.eos_token_id,
+                        pad_token_id=self.tokenizer.eos_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
                         # return_dict_in_generate=True,
                         # output_scores=True
@@ -368,11 +371,12 @@ class SycophancyAnalyzer:
                         next_token_logits = logits[0, -1, :]
                         
                         # 温度スケーリング
-                        if temperature > 0 and temperature != 1.0:
-                            next_token_logits = next_token_logits / temperature
+                        effective_temp = max(temperature, 0.01) if do_sample else 1.0
+                        if effective_temp != 1.0:
+                            next_token_logits = next_token_logits / effective_temp
                         
                         # サンプリングまたはグリーディ選択
-                        if do_sample and temperature > 0:
+                        if do_sample and effective_temp > 0.01:
                             # top-pサンプリング
                             sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
                             cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
@@ -397,8 +401,13 @@ class SycophancyAnalyzer:
                         # 新しいトークンをシーケンスに追加
                         generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
                         
-                        # EOSトークンで停止
-                        if next_token.item() == self.tokenizer.eos_token_id:
+                        # デバッグ情報の出力
+                        if self.config.debug.verbose:
+                            current_text = self.tokenizer.decode(generated_tokens[0][original_length:], skip_special_tokens=False)
+                            print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_text}'")
+                        
+                        # EOSトークンで停止（ただし、最低限の長さは確保）
+                        if next_token.item() == self.tokenizer.eos_token_id and step >= 2:  # 最低3トークンは生成
                             print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
                             break
                         

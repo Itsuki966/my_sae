@@ -270,7 +270,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
         device="auto"
     ),
     data=DataConfig(sample_size=5),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    generation=GenerationConfig(max_new_tokens=20, temperature=0.3, do_sample=True, top_p=0.9),  # 改善された設定
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
@@ -297,7 +297,7 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
         device="auto"
     ),
     data=DataConfig(sample_size=1000),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    generation=GenerationConfig(max_new_tokens=15, temperature=0.2, do_sample=True, top_p=0.9),  # 改善された設定
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
