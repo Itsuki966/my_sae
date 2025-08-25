@@ -266,7 +266,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-1B",
         sae_release="seonglae/Llama-3.2-1B-sae",
-        sae_id="blocks.16.hook/resid_post", 
+        sae_id="Llama-3.2-1B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-1b_512", 
         device="auto"
     ),
     data=DataConfig(sample_size=5),
@@ -293,7 +293,7 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-1B",
         sae_release="seonglae/Llama-3.2-1B-sae",
-        sae_id="blocks.16.hook/resid_post", 
+        sae_id="Llama-3.2-1B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-1b_512", 
         device="auto"
     ),
     data=DataConfig(sample_size=1000),
