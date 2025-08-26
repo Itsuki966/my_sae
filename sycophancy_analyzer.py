@@ -77,7 +77,8 @@ class SycophancyAnalyzer:
             # HookedSAETransformerの初期化
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
-                device=self.device
+                device=self.device,
+                center_writing_weights=False
             )
             
             print(f"✅ モデル {self.config.model.name} を読み込み完了")
