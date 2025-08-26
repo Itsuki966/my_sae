@@ -299,7 +299,7 @@ class SycophancyAnalyzer:
     
     def get_model_response(self, prompt: str) -> str:
         """
-        モデルからの応答を取得（改善版）
+        モデルからの応答を取得（Llama3/HookedSAETransformer対応改善版）
         
         Args:
             prompt: 入力プロンプト
@@ -311,7 +311,7 @@ class SycophancyAnalyzer:
             # デバッグ出力
             if self.config.debug.show_prompts:
                 print("\n" + "="*60)
-                print("📝 送信するプロンプト:")
+                print("📝 送信するプロンプト (元):")
                 print("-" * 40)
                 print(prompt)
                 print("-" * 40)
@@ -319,9 +319,33 @@ class SycophancyAnalyzer:
             # tokenizerの存在確認
             if self.tokenizer is None:
                 raise ValueError("Tokenizer is None. Please ensure the model is properly loaded.")
-            
+
+            # モデル種別の自動判定
+            model_name = self.config.model.name.lower()
+            is_llama3 = "llama-3" in model_name or "llama3" in model_name
+            is_hooked_transformer = hasattr(self.model, 'cfg') or 'hooked' in str(type(self.model)).lower()
+
+            # チャットテンプレートの適用（Llama3の場合）
+            prompt_for_model = prompt
+            if is_llama3 and hasattr(self.tokenizer, 'apply_chat_template'):
+                try:
+                    messages = [{"role": "user", "content": prompt}]
+                    prompt_for_model = self.tokenizer.apply_chat_template(
+                        messages, 
+                        tokenize=False, 
+                        add_generation_prompt=True
+                    )
+                    if self.config.debug.show_prompts:
+                        print("📝 Llama3チャットテンプレート適用後:")
+                        print("-" * 40)
+                        print(prompt_for_model)
+                        print("-" * 40)
+                except Exception as e:
+                    print(f"⚠️ チャットテンプレート適用失敗: {e}。元のプロンプトを使用します")
+                    prompt_for_model = prompt
+
             # トークン化
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
+            inputs = self.tokenizer.encode(prompt_for_model, return_tensors="pt").to(self.device)
             original_length = inputs.shape[1]
             
             # 生成パラメータの設定
@@ -329,100 +353,160 @@ class SycophancyAnalyzer:
             temperature = self.config.generation.temperature
             do_sample = self.config.generation.do_sample
             top_p = self.config.generation.top_p
+
+            # EOSトークンIDsの設定（モデル別）
+            eos_token_ids = [self.tokenizer.eos_token_id] if self.tokenizer.eos_token_id is not None else []
+            
+            if is_llama3:
+                # Llama3の特殊トークンを追加
+                special_tokens = ["<|eot_id|>", "<|end_of_text|>"]
+                for token in special_tokens:
+                    try:
+                        token_id = self.tokenizer.convert_tokens_to_ids(token)
+                        if isinstance(token_id, int) and token_id != self.tokenizer.unk_token_id and token_id not in eos_token_ids:
+                            eos_token_ids.append(token_id)
+                    except Exception:
+                        continue
             
             if self.config.debug.verbose:
-                print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン)")
+                print(f"🔄 テキスト生成開始...")
+                print(f"  モデル: {'Llama3' if is_llama3 else 'Other'} ({'HookedTransformer' if is_hooked_transformer else 'Standard'})")
+                print(f"  最大トークン数: {max_new_tokens}")
+                print(f"  EOS トークンIDs: {eos_token_ids}")
             
             with torch.no_grad():
+                # まずgenerateメソッドを試行
+                use_fallback = False
                 try:
-                    # HookedTransformerのgenerateメソッドを試行
-                    # temperature=0の場合は0.01に調整（完全に0だと問題が起きることがある）
-                    effective_temperature = max(temperature, 0.01) if do_sample else temperature
+                    # HookedSAETransformerでもgenerateが使える場合がある
+                    effective_temperature = max(temperature, 0.01) if do_sample and temperature <= 0 else temperature
                     
-                    outputs = self.model.generate(
-                        inputs,
-                        max_new_tokens=max_new_tokens,
-                        temperature=effective_temperature,
-                        do_sample=do_sample,
-                        top_p=top_p,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id,
-                        # return_dict_in_generate=True,
-                        # output_scores=True
-                    )
+                    generate_kwargs = {
+                        "max_new_tokens": max_new_tokens,
+                        "do_sample": do_sample,
+                        "top_p": top_p,
+                    }
                     
-                    # 生成されたトークンを取得
+                    # temperatureの設定（do_sampleがTrueの場合のみ）
+                    if do_sample:
+                        generate_kwargs["temperature"] = effective_temperature
+                    
+                    # EOSトークンの設定
+                    if eos_token_ids:
+                        # 単一のIDか複数のIDかを自動判定
+                        if len(eos_token_ids) == 1:
+                            generate_kwargs["eos_token_id"] = eos_token_ids[0]
+                        else:
+                            # 複数の場合は最初のものを使用（互換性のため）
+                            generate_kwargs["eos_token_id"] = eos_token_ids
+                    
+                    # pad_token_idの設定
+                    if self.tokenizer.pad_token_id is not None:
+                        generate_kwargs["pad_token_id"] = self.tokenizer.pad_token_id
+                    elif self.tokenizer.eos_token_id is not None:
+                        generate_kwargs["pad_token_id"] = self.tokenizer.eos_token_id
+
+                    if self.config.debug.verbose:
+                        print(f"📊 generate() パラメータ: {generate_kwargs}")
+                    
+                    outputs = self.model.generate(inputs, **generate_kwargs)
+                    
+                    # 出力の形式を確認
                     if hasattr(outputs, 'sequences'):
                         generated_tokens = outputs.sequences[0]
+                    elif isinstance(outputs, torch.Tensor):
+                        generated_tokens = outputs[0] if outputs.dim() > 1 else outputs
                     else:
                         generated_tokens = outputs
                         
-                except (AttributeError, TypeError) as e:
-                    print(f"⚠️ generateメソッドが利用できません ({e})。自作生成ループを使用します")
-                    
-                    # 自作の生成ループ
+                except (AttributeError, TypeError, NotImplementedError) as e:
+                    print(f"⚠️ generateメソッドが利用できません ({e})。フォールバック処理を使用します")
+                    use_fallback = True
+                except Exception as e:
+                    print(f"⚠️ 生成中にエラーが発生しました ({e})。フォールバック処理を使用します")
+                    use_fallback = True
+                
+                # フォールバック: 自作生成ループ
+                if use_fallback:
+                    print("🔄 自作生成ループを開始...")
                     generated_tokens = inputs.clone()
                     
                     for step in range(max_new_tokens):
-                        # 現在のシーケンスでモデルを実行
-                        logits = self.model(generated_tokens)
-                        
-                        # 最後のトークンの予測を取得
-                        next_token_logits = logits[0, -1, :]
-                        
-                        # 温度スケーリング
-                        effective_temp = max(temperature, 0.01) if do_sample else 1.0
-                        if effective_temp != 1.0:
-                            next_token_logits = next_token_logits / effective_temp
-                        
-                        # サンプリングまたはグリーディ選択
-                        if do_sample and effective_temp > 0.01:
-                            # top-pサンプリング
-                            sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                        try:
+                            # モデルの前向き推論
+                            if is_hooked_transformer:
+                                # HookedTransformerの場合
+                                logits = self.model(generated_tokens)
+                                if isinstance(logits, tuple):
+                                    logits = logits[0]  # logitsのみを取得
+                            else:
+                                # 標準的なTransformerの場合
+                                outputs = self.model(generated_tokens)
+                                logits = outputs.logits if hasattr(outputs, 'logits') else outputs
                             
-                            # top-p閾値を超えるトークンを除外
-                            sorted_indices_to_remove = cumulative_probs > top_p
-                            if sorted_indices_to_remove.sum() > 1:
-                                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
-                                sorted_indices_to_remove[0] = False
+                            # 最後のトークンの予測を取得
+                            next_token_logits = logits[0, -1, :].clone()
                             
-                            # 除外するインデックスを元の順序に戻す
-                            indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                            next_token_logits[indices_to_remove] = -float('inf')
+                            # 温度スケーリング
+                            if do_sample and temperature > 0:
+                                next_token_logits = next_token_logits / max(temperature, 0.01)
                             
-                            # サンプリング
-                            probs = torch.softmax(next_token_logits, dim=-1)
-                            next_token = torch.multinomial(probs, num_samples=1)
-                        else:
-                            # グリーディデコーディング
-                            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-                        
-                        # 新しいトークンをシーケンスに追加
-                        generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
-                        
-                        # デバッグ情報の出力
-                        if self.config.debug.verbose:
-                            current_text = self.tokenizer.decode(generated_tokens[0][original_length:], skip_special_tokens=False)
-                            print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_text}'")
-                        
-                        # EOSトークンで停止（ただし、最低限の長さは確保）
-                        if next_token.item() == self.tokenizer.eos_token_id and step >= 2:  # 最低3トークンは生成
-                            print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                            # サンプリング vs グリーディ
+                            if do_sample and temperature > 0:
+                                # top-pサンプリング
+                                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                                
+                                # top-p閾値を超えるトークンをマスク
+                                sorted_indices_to_remove = cumulative_probs > top_p
+                                if sorted_indices_to_remove.sum() > 1:
+                                    sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                                    sorted_indices_to_remove[0] = False
+                                
+                                # マスクを適用
+                                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                                if len(indices_to_remove) > 0:
+                                    next_token_logits[indices_to_remove] = -float('inf')
+                                
+                                # サンプリング
+                                probs = torch.softmax(next_token_logits, dim=-1)
+                                next_token = torch.multinomial(probs, num_samples=1)
+                            else:
+                                # グリーディデコーディング
+                                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                            
+                            # シーケンスに追加
+                            generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
+                            
+                            # 早期停止条件
+                            next_token_id = next_token.item()
+                            if next_token_id in eos_token_ids and step >= 1:  # 最低2トークンは生成
+                                if self.config.debug.verbose:
+                                    print(f"✅ EOSトークン({next_token_id})で停止 (ステップ: {step + 1})")
+                                break
+                            
+                            # 進行状況表示
+                            if self.config.debug.verbose and (step + 1) % 5 == 0:
+                                current_text = self.tokenizer.decode(
+                                    generated_tokens[0][original_length:], 
+                                    skip_special_tokens=False
+                                )
+                                print(f"📊 ステップ {step + 1}/{max_new_tokens}: '{current_text}'")
+                            
+                        except Exception as step_error:
+                            print(f"❌ 生成ステップ {step + 1} でエラー: {step_error}")
                             break
-                        
-                        # 進行状況の表示（10ステップごと）
-                        if (step + 1) % 10 == 0:
-                            print(f"📊 生成進行状況: {step + 1}/{max_new_tokens} トークン")
                 
                 # 新しく生成された部分のみを取得
-                generated_part = generated_tokens[0][original_length:]
-                
-                # デコード
-                response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                if isinstance(generated_tokens, torch.Tensor) and generated_tokens.dim() > 0:
+                    generated_part = generated_tokens[original_length:]
+                    response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                else:
+                    print("⚠️ 生成されたトークンが不正な形式です")
+                    response = ""
                 
                 if self.config.debug.verbose:
-                    print(f"✅ 生成完了: {len(generated_part)}トークン生成")
+                    print(f"✅ 生成完了: {len(generated_part) if 'generated_part' in locals() else 0}トークン生成")
                 
                 # デバッグ出力
                 if self.config.debug.show_responses:
@@ -435,8 +519,9 @@ class SycophancyAnalyzer:
                 
         except Exception as e:
             print(f"❌ 応答生成エラー: {e}")
-            import traceback
-            traceback.print_exc()
+            if self.config.debug.verbose:
+                import traceback
+                traceback.print_exc()
             return ""
     
     def get_sae_activations(self, text: str) -> torch.Tensor:
