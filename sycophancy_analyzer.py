@@ -105,6 +105,18 @@ class SycophancyAnalyzer:
             # pad_token_idの設定を避ける（エラー回避）
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Llama3でのトークナイザー設定の追加調整
+            if 'llama' in self.config.model.name.lower():
+                # Llama3の特殊なトークナイザー設定
+                if not hasattr(self.tokenizer, 'eos_token_id') or self.tokenizer.eos_token_id is None:
+                    print("⚠️ eos_token_idが設定されていません。デフォルト値を使用します")
+                    # Llama3のデフォルトEOSトークンID
+                    if hasattr(self.tokenizer, 'convert_tokens_to_ids'):
+                        try:
+                            self.tokenizer.eos_token_id = self.tokenizer.convert_tokens_to_ids('<|eot_id|>')
+                        except:
+                            self.tokenizer.eos_token_id = 128001  # Llama3のデフォルト
                 
         except Exception as e:
             print(f"❌ モデル読み込みエラー: {e}")
@@ -337,20 +349,23 @@ class SycophancyAnalyzer:
             with torch.no_grad():
                 try:
                     # HookedTransformerのgenerateメソッドを試行
+                    # より保守的な引数設定でエラーを回避
+                    
                     # temperature=0の場合は0.01に調整（完全に0だと問題が起きることがある）
                     effective_temperature = max(temperature, 0.01) if do_sample else temperature
                     
-                    outputs = self.model.generate(
-                        inputs,
-                        max_new_tokens=max_new_tokens,
-                        temperature=effective_temperature,
-                        do_sample=do_sample,
-                        top_p=top_p,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id,
-                        # return_dict_in_generate=True,
-                        # output_scores=True
-                    )
+                    # HookedTransformerでサポートされている基本的な引数のみを使用
+                    generate_kwargs = {
+                        'max_new_tokens': max_new_tokens,
+                        'temperature': effective_temperature,
+                    }
+                    
+                    # do_sampleとtop_pは条件付きで追加
+                    if do_sample:
+                        generate_kwargs['do_sample'] = True
+                        generate_kwargs['top_p'] = top_p
+                    
+                    outputs = self.model.generate(inputs, **generate_kwargs)
                     
                     # 生成されたトークンを取得
                     if hasattr(outputs, 'sequences'):
@@ -358,7 +373,7 @@ class SycophancyAnalyzer:
                     else:
                         generated_tokens = outputs
                         
-                except (AttributeError, TypeError) as e:
+                except (AttributeError, TypeError, RuntimeError) as e:
                     print(f"⚠️ generateメソッドが利用できません ({e})。自作生成ループを使用します")
                     
                     # 自作の生成ループ
@@ -464,6 +479,20 @@ class SycophancyAnalyzer:
                 
                 # 指定したフック位置のactivationを取得
                 hook_name = self.config.model.sae_id
+                
+                # フック名がキャッシュに存在するか確認
+                if hook_name not in cache:
+                    print(f"⚠️ フック名 '{hook_name}' がキャッシュに見つかりません")
+                    print(f"利用可能なキー: {list(cache.keys())[:10]}...")  # 最初の10個のみ表示
+                    
+                    # 類似のキーを探す（blocks.X.hook_resid_preの形式）
+                    similar_keys = [k for k in cache.keys() if 'hook_resid_pre' in k and 'blocks' in k]
+                    if similar_keys:
+                        hook_name = similar_keys[0]
+                        print(f"代替フック名を使用: {hook_name}")
+                    else:
+                        raise KeyError(f"適切なフック名が見つかりません: {hook_name}")
+                
                 activation = cache[hook_name]
                 
                 # activationの形状を確認して調整
@@ -500,6 +529,9 @@ class SycophancyAnalyzer:
                 
         except Exception as e:
             print(f"❌ SAE活性化取得エラー: {e}")
+            import traceback
+            if self.config.debug.verbose:
+                traceback.print_exc()
             return torch.zeros(self.get_sae_d_sae())
     
     def run_single_analysis(self, item: Dict[str, Any]) -> Dict[str, Any]:
