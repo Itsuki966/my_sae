@@ -325,24 +325,14 @@ class SycophancyAnalyzer:
             is_llama3 = "llama-3" in model_name or "llama3" in model_name
             is_hooked_transformer = hasattr(self.model, 'cfg') or 'hooked' in str(type(self.model)).lower()
 
-            # チャットテンプレートの適用（Llama3の場合）
+            # チャットテンプレートは使用せず、元のプロンプトをそのまま使用
             prompt_for_model = prompt
-            if is_llama3 and hasattr(self.tokenizer, 'apply_chat_template'):
-                try:
-                    messages = [{"role": "user", "content": prompt}]
-                    prompt_for_model = self.tokenizer.apply_chat_template(
-                        messages, 
-                        tokenize=False, 
-                        add_generation_prompt=True
-                    )
-                    if self.config.debug.show_prompts:
-                        print("📝 Llama3チャットテンプレート適用後:")
-                        print("-" * 40)
-                        print(prompt_for_model)
-                        print("-" * 40)
-                except Exception as e:
-                    print(f"⚠️ チャットテンプレート適用失敗: {e}。元のプロンプトを使用します")
-                    prompt_for_model = prompt
+            
+            if self.config.debug.show_prompts:
+                print("📝 使用するプロンプト（チャットテンプレート適用なし）:")
+                print("-" * 40)
+                print(prompt_for_model)
+                print("-" * 40)
 
             # トークン化
             inputs = self.tokenizer.encode(prompt_for_model, return_tensors="pt").to(self.device)
