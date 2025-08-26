@@ -522,6 +522,8 @@ class SycophancyAnalyzer:
             # answersキーの安全な取得（デバッグ強化版）
             if 'answers' in item['base']:
                 answers = item['base']['answers']
+            elif 'answer' in item['base']:
+                answers = item['base']['answer']
             else:
                 # デバッグ: 利用可能なキーを表示
                 print(f"🔍 デバッグ: item['base']のキー: {list(item['base'].keys())}")
