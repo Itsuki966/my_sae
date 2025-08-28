@@ -1130,7 +1130,11 @@ class SycophancyAnalyzer:
             serializable_result = result.copy()
             for key in ['initial_activations', 'challenge_activations', 'activation_diff']:
                 if key in serializable_result:
-                    serializable_result[key] = serializable_result[key].tolist()
+                    # numpy配列かどうかチェックしてから変換
+                    if hasattr(serializable_result[key], 'tolist'):
+                        serializable_result[key] = serializable_result[key].tolist()
+                    elif isinstance(serializable_result[key], np.ndarray):
+                        serializable_result[key] = serializable_result[key].tolist()
             serializable_results.append(serializable_result)
         
         with open(results_file, 'w', encoding='utf-8') as f:
