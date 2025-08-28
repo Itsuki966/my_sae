@@ -57,6 +57,7 @@ class SycophancyAnalyzer:
         self.sae = None
         self.tokenizer = None
         self.device = self.config.model.device
+        self.use_chat_template = False  # Llama3のチャットテンプレート使用フラグ
         
         # 結果保存用の属性
         self.results = []
@@ -102,24 +103,59 @@ class SycophancyAnalyzer:
             # Tokenizerの取得
             self.tokenizer = self.model.tokenizer
             
-            # pad_token_idの設定を避ける（エラー回避）
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-            # Llama3でのトークナイザー設定の追加調整
+            # Llama3での特別な設定
             if 'llama' in self.config.model.name.lower():
-                # Llama3の特殊なトークナイザー設定
+                print("🦙 Llama3の特別な設定を適用中...")
+                
+                # pad_tokenの設定
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                    print(f"🔧 pad_token設定: {self.tokenizer.pad_token}")
+                
+                # Llama3のEOSトークン設定の改善
                 if not hasattr(self.tokenizer, 'eos_token_id') or self.tokenizer.eos_token_id is None:
-                    print("⚠️ eos_token_idが設定されていません。デフォルト値を使用します")
-                    # Llama3のデフォルトEOSトークンID
+                    print("⚠️ eos_token_idが設定されていません。Llama3用に設定します")
+                    # Llama3のEOSトークンを明示的に設定
                     if hasattr(self.tokenizer, 'convert_tokens_to_ids'):
                         try:
-                            self.tokenizer.eos_token_id = self.tokenizer.convert_tokens_to_ids('<|eot_id|>')
-                        except:
-                            self.tokenizer.eos_token_id = 128001  # Llama3のデフォルト
+                            # Llama3.2で使用される可能性のあるEOSトークン
+                            for eos_token in ['<|eot_id|>', '<|end_of_text|>', '</s>']:
+                                try:
+                                    eos_id = self.tokenizer.convert_tokens_to_ids(eos_token)
+                                    if eos_id is not None and eos_id != self.tokenizer.unk_token_id:
+                                        self.tokenizer.eos_token_id = eos_id
+                                        print(f"✅ EOSトークン設定成功: {eos_token} (ID: {eos_id})")
+                                        break
+                                except:
+                                    continue
+                            else:
+                                # フォールバック: 一般的なLlama3のEOSトークンID
+                                self.tokenizer.eos_token_id = 128001
+                                print(f"⚠️ フォールバック: EOSトークンID = {self.tokenizer.eos_token_id}")
+                        except Exception as eos_error:
+                            print(f"⚠️ EOSトークン設定エラー: {eos_error}")
+                            self.tokenizer.eos_token_id = 128001  # Llama3.2のデフォルト
+                
+                print(f"🔧 最終EOSトークンID: {self.tokenizer.eos_token_id}")
+                print(f"🔧 語彙サイズ: {self.tokenizer.vocab_size}")
+                
+                # Chat templateが存在するかチェック
+                if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
+                    print("✅ Llama3のchat_templateが利用可能です")
+                    self.use_chat_template = True
+                else:
+                    print("⚠️ chat_templateが利用できません。通常のテキスト生成を使用します")
+                    self.use_chat_template = False
+            else:
+                # 非Llama3モデルの場合
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.use_chat_template = False
                 
         except Exception as e:
             print(f"❌ モデル読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
             raise
     
     def get_sae_d_sae(self) -> int:
@@ -312,7 +348,7 @@ class SycophancyAnalyzer:
     
     def get_model_response(self, prompt: str) -> str:
         """
-        モデルからの応答を取得（改善版）
+        モデルからの応答を取得（Llama3対応改善版）
         
         Args:
             prompt: 入力プロンプト
@@ -333,9 +369,38 @@ class SycophancyAnalyzer:
             if self.tokenizer is None:
                 raise ValueError("Tokenizer is None. Please ensure the model is properly loaded.")
             
+            # Llama3のchat template対応
+            if hasattr(self, 'use_chat_template') and self.use_chat_template:
+                # Llama3のチャット形式に変換
+                messages = [
+                    {"role": "user", "content": prompt}
+                ]
+                try:
+                    formatted_prompt = self.tokenizer.apply_chat_template(
+                        messages, 
+                        tokenize=False, 
+                        add_generation_prompt=True
+                    )
+                    if self.config.debug.verbose:
+                        print(f"🦙 Llama3チャット形式に変換完了")
+                        print(f"変換後: {formatted_prompt[:200]}..." if len(formatted_prompt) > 200 else formatted_prompt)
+                except Exception as chat_error:
+                    print(f"⚠️ チャットテンプレート適用失敗: {chat_error}")
+                    formatted_prompt = prompt  # フォールバック
+            else:
+                formatted_prompt = prompt
+            
             # トークン化
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
-            original_length = inputs.shape[1]
+            try:
+                inputs = self.tokenizer.encode(formatted_prompt, return_tensors="pt").to(self.device)
+                original_length = inputs.shape[1]
+                
+                if self.config.debug.verbose:
+                    print(f"🔢 トークン化完了: {original_length}トークン")
+                    
+            except Exception as tokenize_error:
+                print(f"❌ トークン化エラー: {tokenize_error}")
+                return ""
             
             # 生成パラメータの設定
             max_new_tokens = self.config.generation.max_new_tokens
@@ -344,26 +409,43 @@ class SycophancyAnalyzer:
             top_p = self.config.generation.top_p
             
             if self.config.debug.verbose:
-                print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン)")
+                print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン, temp={temperature})")
             
             with torch.no_grad():
                 try:
-                    # HookedTransformerのgenerateメソッドを試行
-                    # より保守的な引数設定でエラーを回避
-                    
-                    # temperature=0の場合は0.01に調整（完全に0だと問題が起きることがある）
+                    # HookedTransformerのgenerateメソッドを試行（改良版）
                     effective_temperature = max(temperature, 0.01) if do_sample else temperature
                     
-                    # HookedTransformerでサポートされている基本的な引数のみを使用
-                    generate_kwargs = {
-                        'max_new_tokens': max_new_tokens,
-                        'temperature': effective_temperature,
-                    }
+                    # Llama3用の特別な生成設定
+                    if 'llama' in self.config.model.name.lower():
+                        # Llama3に最適化されたパラメータ
+                        generate_kwargs = {
+                            'max_new_tokens': max_new_tokens,
+                            'temperature': effective_temperature if do_sample else 1.0,
+                            'do_sample': do_sample,
+                        }
+                        
+                        if do_sample:
+                            generate_kwargs['top_p'] = top_p
+                            generate_kwargs['top_k'] = 50  # Llama3で効果的
+                        
+                        # 停止条件の設定
+                        if hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None:
+                            generate_kwargs['eos_token_id'] = self.tokenizer.eos_token_id
+                            
+                    else:
+                        # 他のモデル用の設定
+                        generate_kwargs = {
+                            'max_new_tokens': max_new_tokens,
+                            'temperature': effective_temperature,
+                        }
+                        
+                        if do_sample:
+                            generate_kwargs['do_sample'] = True
+                            generate_kwargs['top_p'] = top_p
                     
-                    # do_sampleとtop_pは条件付きで追加
-                    if do_sample:
-                        generate_kwargs['do_sample'] = True
-                        generate_kwargs['top_p'] = top_p
+                    if self.config.debug.verbose:
+                        print(f"🔧 生成パラメータ: {generate_kwargs}")
                     
                     outputs = self.model.generate(inputs, **generate_kwargs)
                     
@@ -371,71 +453,94 @@ class SycophancyAnalyzer:
                     if hasattr(outputs, 'sequences'):
                         generated_tokens = outputs.sequences[0]
                     else:
-                        generated_tokens = outputs
+                        generated_tokens = outputs if len(outputs.shape) > 1 else outputs.unsqueeze(0)
                         
                 except (AttributeError, TypeError, RuntimeError) as e:
                     print(f"⚠️ generateメソッドが利用できません ({e})。自作生成ループを使用します")
                     
-                    # 自作の生成ループ
+                    # 自作の生成ループ（改良版）
                     generated_tokens = inputs.clone()
                     
                     for step in range(max_new_tokens):
-                        # 現在のシーケンスでモデルを実行
-                        logits = self.model(generated_tokens)
-                        
-                        # 最後のトークンの予測を取得
-                        next_token_logits = logits[0, -1, :]
-                        
-                        # 温度スケーリング
-                        effective_temp = max(temperature, 0.01) if do_sample else 1.0
-                        if effective_temp != 1.0:
-                            next_token_logits = next_token_logits / effective_temp
-                        
-                        # サンプリングまたはグリーディ選択
-                        if do_sample and effective_temp > 0.01:
-                            # top-pサンプリング
-                            sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                        try:
+                            # 現在のシーケンスでモデルを実行
+                            logits = self.model(generated_tokens)
                             
-                            # top-p閾値を超えるトークンを除外
-                            sorted_indices_to_remove = cumulative_probs > top_p
-                            if sorted_indices_to_remove.sum() > 1:
-                                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
-                                sorted_indices_to_remove[0] = False
+                            # 最後のトークンの予測を取得
+                            next_token_logits = logits[0, -1, :]
                             
-                            # 除外するインデックスを元の順序に戻す
-                            indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                            next_token_logits[indices_to_remove] = -float('inf')
+                            # 温度スケーリング
+                            effective_temp = max(temperature, 0.01) if do_sample else 1.0
+                            if effective_temp != 1.0:
+                                next_token_logits = next_token_logits / effective_temp
                             
-                            # サンプリング
-                            probs = torch.softmax(next_token_logits, dim=-1)
-                            next_token = torch.multinomial(probs, num_samples=1)
-                        else:
-                            # グリーディデコーディング
-                            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-                        
-                        # 新しいトークンをシーケンスに追加
-                        generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
-                        
-                        # デバッグ情報の出力
-                        if self.config.debug.verbose:
-                            current_text = self.tokenizer.decode(generated_tokens[0][original_length:], skip_special_tokens=False)
-                            print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_text}'")
-                        
-                        # EOSトークンで停止（ただし、最低限の長さは確保）
-                        if next_token.item() == self.tokenizer.eos_token_id and step >= 2:  # 最低3トークンは生成
-                            print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                            # サンプリングまたはグリーディ選択
+                            if do_sample and effective_temp > 0.01:
+                                # top-pサンプリング
+                                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                                
+                                # top-p閾値を超えるトークンを除外
+                                sorted_indices_to_remove = cumulative_probs > top_p
+                                if sorted_indices_to_remove.sum() > 1:
+                                    sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                                    sorted_indices_to_remove[0] = False
+                                
+                                # 除外するインデックスを元の順序に戻す
+                                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                                next_token_logits[indices_to_remove] = -float('inf')
+                                
+                                # サンプリング
+                                probs = torch.softmax(next_token_logits, dim=-1)
+                                next_token = torch.multinomial(probs, num_samples=1)
+                            else:
+                                # グリーディデコーディング
+                                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                            
+                            # 新しいトークンをシーケンスに追加
+                            generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
+                            
+                            # デバッグ情報の出力
+                            if self.config.debug.verbose and step < 5:  # 最初の5ステップのみ
+                                current_text = self.tokenizer.decode(generated_tokens[0][original_length:], skip_special_tokens=False)
+                                print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_text}'")
+                            
+                            # EOSトークンで停止
+                            if (hasattr(self.tokenizer, 'eos_token_id') and 
+                                self.tokenizer.eos_token_id is not None and 
+                                next_token.item() == self.tokenizer.eos_token_id):
+                                if self.config.debug.verbose:
+                                    print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                                break
+                                
+                            # 空白または改行が続いた場合の早期終了（Llama3での応答品質向上）
+                            if step >= 2:  # 最低限の長さは確保
+                                recent_text = self.tokenizer.decode(generated_tokens[0][-3:], skip_special_tokens=True)
+                                if len(recent_text.strip()) == 0:  # 空白のみが続く場合
+                                    if self.config.debug.verbose:
+                                        print(f"✅ 空白文字で生成終了 (ステップ: {step + 1})")
+                                    break
+                            
+                        except Exception as step_error:
+                            print(f"❌ 生成ステップ {step} でエラー: {step_error}")
                             break
-                        
-                        # 進行状況の表示（10ステップごと）
-                        if (step + 1) % 10 == 0:
-                            print(f"📊 生成進行状況: {step + 1}/{max_new_tokens} トークン")
                 
                 # 新しく生成された部分のみを取得
                 generated_part = generated_tokens[0][original_length:]
                 
                 # デコード
                 response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                
+                # Llama3の特別な後処理
+                if 'llama' in self.config.model.name.lower() and response:
+                    # Llama3の典型的な終了パターンを処理
+                    for end_pattern in ['<|eot_id|>', '<|end_of_text|>', 'assistant', 'Assistant']:
+                        if end_pattern in response:
+                            response = response.split(end_pattern)[0]
+                            break
+                    
+                    # 余分な改行や空白をクリーンアップ
+                    response = response.strip()
                 
                 if self.config.debug.verbose:
                     print(f"✅ 生成完了: {len(generated_part)}トークン生成")
@@ -447,12 +552,13 @@ class SycophancyAnalyzer:
                     print(response)
                     print("-" * 40)
                 
-                return response.strip()
+                return response
                 
         except Exception as e:
             print(f"❌ 応答生成エラー: {e}")
-            import traceback
-            traceback.print_exc()
+            if self.config.debug.verbose:
+                import traceback
+                traceback.print_exc()
             return ""
     
     def get_sae_activations(self, text: str) -> torch.Tensor:
@@ -580,11 +686,19 @@ class SycophancyAnalyzer:
             return None
         
         try:
-            # 初回プロンプトの作成
-            initial_prompt = self.config.prompts.initial_prompt_template.format(
-                question=question,
-                answers=answers
-            )
+            # 初回プロンプトの作成（Llama3対応）
+            if 'llama' in self.config.model.name.lower():
+                # Llama3専用プロンプトを使用
+                initial_prompt = self.config.prompts.llama3_initial_prompt_template.format(
+                    question=question,
+                    answers=answers
+                )
+            else:
+                # 従来のプロンプトを使用
+                initial_prompt = self.config.prompts.initial_prompt_template.format(
+                    question=question,
+                    answers=answers
+                )
             
             # 初回応答の取得（タイムアウト対策）
             initial_response = self.get_model_response(initial_prompt)
@@ -597,8 +711,13 @@ class SycophancyAnalyzer:
             if self.config.debug.verbose:
                 print(f"📊 抽出された初回回答: {initial_answer}")
             
-            # 挑戦的質問のプロンプト作成（initial_promptではなく、質問と選択肢のみを使用）
-            challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.challenge_prompt}"
+            # 挑戦的質問のプロンプト作成
+            if 'llama' in self.config.model.name.lower():
+                # Llama3では短縮形式を使用
+                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.llama3_challenge_prompt}"
+            else:
+                # 従来の形式
+                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.challenge_prompt}"
             
             # 挑戦後の応答取得（タイムアウト対策）
             challenge_response = self.get_model_response(challenge_prompt)
