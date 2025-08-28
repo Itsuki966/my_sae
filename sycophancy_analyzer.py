@@ -217,56 +217,118 @@ class SycophancyAnalyzer:
             print(f"❌ データセット読み込みエラー: {e}")
             raise
     
-    def extract_answer_letter(self, response: str) -> Optional[str]:
+    def extract_choice_letters_from_answers(self, answers: str) -> Tuple[List[str], str]:
         """
-        改善された回答文字抽出関数
+        answersから選択肢の文字を抽出し、選択肢範囲文字列を生成
+        
+        Args:
+            answers: 選択肢文字列
+            
+        Returns:
+            (選択肢文字のリスト, 選択肢範囲文字列)
+        """
+        # 括弧付きの選択肢パターンを検索 (A), (B), etc.
+        choice_pattern = re.compile(r'\(([A-Z])\)')
+        matches = choice_pattern.findall(answers)
+        
+        if matches:
+            choice_letters = sorted(set(matches))  # 重複除去とソート
+            
+            if len(choice_letters) <= 2:
+                choice_range = f"{choice_letters[0]} or {choice_letters[-1]}"
+            elif len(choice_letters) <= 5:
+                choice_range = ", ".join(choice_letters[:-1]) + f", or {choice_letters[-1]}"
+            else:
+                choice_range = f"{choice_letters[0]} through {choice_letters[-1]}"
+                
+            if self.config.debug.verbose:
+                print(f"📝 抽出された選択肢: {choice_letters}")
+                print(f"📝 選択肢範囲: {choice_range}")
+                
+            return choice_letters, choice_range
+        else:
+            # デフォルト値（A-Eを想定）
+            default_letters = ['A', 'B', 'C', 'D', 'E']
+            default_range = "A, B, C, D, or E"
+            
+            if self.config.debug.verbose:
+                print("⚠️ 選択肢パターンが見つかりません。デフォルト値を使用")
+                
+            return default_letters, default_range
+    
+    def extract_answer_letter(self, response: str, valid_choices: List[str] = None) -> Optional[str]:
+        """
+        改善された回答文字抽出関数（有効な選択肢を考慮）
         
         Args:
             response: モデルの応答テキスト
+            valid_choices: 有効な選択肢のリスト（例：['A', 'B', 'C']）
             
         Returns:
-            抽出された選択肢文字（A-E）、または None
+            抽出された選択肢文字（A-Z）、または None
         """
         if not response:
             return None
+            
+        # デフォルトの有効な選択肢
+        if valid_choices is None:
+            valid_choices = ['A', 'B', 'C', 'D', 'E']
             
         # 応答を大文字に変換して処理
         response_upper = response.upper().strip()
         
         # パターン1: 単独の選択肢文字（最も一般的）
-        single_letter_match = re.search(r'\b([A-E])\b', response_upper)
-        if single_letter_match:
-            found = single_letter_match.group(1)
-            return found
+        for choice in valid_choices:
+            # 単語境界での検索（より厳密）
+            pattern = rf'\b{choice}\b'
+            if re.search(pattern, response_upper):
+                if self.config.debug.verbose:
+                    print(f"📝 パターン1で抽出: {choice}")
+                return choice
         
         # パターン2: 括弧付きの選択肢
-        paren_match = re.search(r'\(([A-E])\)', response_upper)
+        paren_match = re.search(r'\(([A-Z])\)', response_upper)
         if paren_match:
             found = paren_match.group(1)
-            return found
+            if found in valid_choices:
+                if self.config.debug.verbose:
+                    print(f"📝 パターン2で抽出: {found}")
+                return found
         
         # パターン3: "答えは" や "answer is" の後の文字
-        answer_match = re.search(r'(?:答えは|ANSWER IS|THE ANSWER IS)\s*\(?([A-E])\)?', response_upper)
-        if answer_match:
-            found = answer_match.group(1)
-            return found
+        answer_patterns = [
+            r'(?:答えは|ANSWER IS|THE ANSWER IS)\s*\(?([A-Z])\)?',
+            r'(?:CORRECT ANSWER|FINAL ANSWER):\s*\(?([A-Z])\)?'
+        ]
         
-        # パターン4: 最初に見つかるA-Eの文字（スペースや句読点に関係なく）
-        first_letter = re.search(r'([A-E])', response_upper)
-        if first_letter:
-            found = first_letter.group(1)
-            return found
-        
-        # パターン5: 特殊文字を含む応答の処理（(...) などの場合）  
-        if '(' in response_upper:
-            # 括弧内の文字を探す
-            bracket_content = re.search(r'\(([^)]*)\)', response_upper)
-            if bracket_content:
-                content = bracket_content.group(1)
-                letter_in_bracket = re.search(r'([A-E])', content)
-                if letter_in_bracket:
-                    found = letter_in_bracket.group(1)
+        for pattern in answer_patterns:
+            answer_match = re.search(pattern, response_upper)
+            if answer_match:
+                found = answer_match.group(1)
+                if found in valid_choices:
+                    if self.config.debug.verbose:
+                        print(f"📝 パターン3で抽出: {found}")
                     return found
+        
+        # パターン4: 最初に見つかる有効な選択肢文字
+        for choice in valid_choices:
+            if choice in response_upper:
+                if self.config.debug.verbose:
+                    print(f"📝 パターン4で抽出: {choice}")
+                return choice
+        
+        # パターン5: 行の先頭の文字
+        lines = response_upper.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line and line[0] in valid_choices:
+                if self.config.debug.verbose:
+                    print(f"📝 パターン5で抽出: {line[0]}")
+                return line[0]
+        
+        if self.config.debug.verbose:
+            print(f"⚠️ 有効な選択肢が見つかりません。応答: '{response[:100]}...'")
+            print(f"⚠️ 有効な選択肢: {valid_choices}")
         
         return None
     
@@ -766,18 +828,23 @@ class SycophancyAnalyzer:
             return None
         
         try:
-            # 初回プロンプトの作成（Llama3対応）
+            # 選択肢の文字とプロンプト範囲を抽出
+            valid_choices, choice_range = self.extract_choice_letters_from_answers(answers)
+            
+            # 初回プロンプトの作成（動的選択肢対応）
             if 'llama' in self.config.model.name.lower():
                 # Llama3専用プロンプトを使用
                 initial_prompt = self.config.prompts.llama3_initial_prompt_template.format(
                     question=question,
-                    answers=answers
+                    answers=answers,
+                    choice_range=choice_range
                 )
             else:
                 # 従来のプロンプトを使用
                 initial_prompt = self.config.prompts.initial_prompt_template.format(
                     question=question,
-                    answers=answers
+                    answers=answers,
+                    choice_range=choice_range
                 )
             
             # 初回応答の取得（タイムアウト対策）
@@ -786,19 +853,19 @@ class SycophancyAnalyzer:
                 print("⚠️ 初回応答が空です")
                 return None
                 
-            initial_answer = self.extract_answer_letter(initial_response)
+            initial_answer = self.extract_answer_letter(initial_response, valid_choices)
             
             if self.config.debug.verbose:
                 print(f"📊 抽出された初回回答: {initial_answer}")
                 print(f"📊 正解: {correct_letter}")
             
-            # 挑戦的質問のプロンプト作成
+            # 挑戦的質問のプロンプト作成（改善版：前回の応答を最小限に）
             if 'llama' in self.config.model.name.lower():
-                # Llama3では短縮形式を使用
-                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.llama3_challenge_prompt}"
+                # Llama3では短縮形式を使用（前回の応答は文字のみ）
+                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.llama3_challenge_prompt.format(choice_range=choice_range)}"
             else:
-                # 従来の形式
-                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_response}\n\n{self.config.prompts.challenge_prompt}"
+                # 従来の形式（改善版）
+                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.challenge_prompt.format(choice_range=choice_range)}"
             
             # 挑戦後の応答取得（タイムアウト対策）
             challenge_response = self.get_model_response(challenge_prompt)
@@ -806,7 +873,7 @@ class SycophancyAnalyzer:
                 print("⚠️ 挑戦後応答が空です")
                 challenge_answer = None
             else:
-                challenge_answer = self.extract_answer_letter(challenge_response)
+                challenge_answer = self.extract_answer_letter(challenge_response, valid_choices)
                 
             if self.config.debug.verbose:
                 print(f"📊 抽出された挑戦後回答: {challenge_answer}")
@@ -844,6 +911,8 @@ class SycophancyAnalyzer:
             return {
                 'question': question,
                 'answers': answers,
+                'valid_choices': valid_choices,
+                'choice_range': choice_range,
                 'correct_letter': correct_letter,
                 'initial_response': initial_response,
                 'initial_answer': initial_answer,
