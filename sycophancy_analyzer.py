@@ -1309,8 +1309,17 @@ def main():
         
         # 結果が存在する場合のみ保存
         if results.get('analysis'):
+            # numpy配列をJSONシリアライズ可能な形式に変換
+            analysis_data = results['analysis'].copy()
+            if isinstance(analysis_data, dict):
+                for key, value in analysis_data.items():
+                    if hasattr(value, 'tolist'):
+                        analysis_data[key] = value.tolist()
+                    elif isinstance(value, np.ndarray):
+                        analysis_data[key] = value.tolist()
+            
             with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(results['analysis'], f, indent=2, ensure_ascii=False)
+                json.dump(analysis_data, f, indent=2, ensure_ascii=False)
             print(f"✅ 分析結果を保存: {output_file}")
         else:
             print("⚠️ 保存可能な分析結果がありません")
