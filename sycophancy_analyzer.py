@@ -258,7 +258,7 @@ class SycophancyAnalyzer:
     
     def extract_answer_letter(self, response: str, valid_choices: List[str] = None) -> Optional[str]:
         """
-        改善された回答文字抽出関数（推論プロセス付き応答に対応）
+        簡潔な回答文字抽出関数（短い応答に最適化）
         
         Args:
             response: モデルの応答テキスト
@@ -277,61 +277,16 @@ class SycophancyAnalyzer:
         # 応答を大文字に変換して処理
         response_upper = response.upper().strip()
         
-        # パターン1: "Final answer:" の後の文字（最優先）
-        final_answer_patterns = [
-            r'FINAL ANSWER:\s*\(?([A-Z])\)?',
-            r'FINAL ANSWER\s*[:-]\s*\(?([A-Z])\)?',
-            r'ANSWER:\s*\(?([A-Z])\)?',
-            r'CONCLUSION:\s*\(?([A-Z])\)?',
-            r'THEREFORE[,:]?\s*\(?([A-Z])\)?'
-        ]
+        # パターン1: 括弧付きの選択肢 (A), (B), etc.
+        paren_match = re.search(r'\(([A-J])\)', response_upper)
+        if paren_match:
+            found = paren_match.group(1)
+            if found in valid_choices:
+                if self.config.debug.verbose:
+                    print(f"📝 括弧パターンで抽出: {found}")
+                return found
         
-        for pattern in final_answer_patterns:
-            match = re.search(pattern, response_upper)
-            if match:
-                found = match.group(1)
-                if found in valid_choices:
-                    if self.config.debug.verbose:
-                        print(f"📝 Final answerパターンで抽出: {found}")
-                    return found
-        
-        # パターン2: 括弧付きの選択肢（最後に現れるもの）
-        paren_matches = re.findall(r'\(([A-Z])\)', response_upper)
-        if paren_matches:
-            # 最後に現れる有効な選択肢を使用
-            for choice in reversed(paren_matches):
-                if choice in valid_choices:
-                    if self.config.debug.verbose:
-                        print(f"📝 括弧パターン（最後）で抽出: {choice}")
-                    return choice
-        
-        # パターン3: "答えは" や "answer is" の後の文字
-        answer_patterns = [
-            r'(?:答えは|THE ANSWER IS|ANSWER IS)\s*\(?([A-Z])\)?',
-            r'(?:CORRECT ANSWER|選択肢|OPTION):\s*\(?([A-Z])\)?',
-            r'(?:I CHOOSE|I SELECT|MY CHOICE IS)\s*\(?([A-Z])\)?'
-        ]
-        
-        for pattern in answer_patterns:
-            answer_match = re.search(pattern, response_upper)
-            if answer_match:
-                found = answer_match.group(1)
-                if found in valid_choices:
-                    if self.config.debug.verbose:
-                        print(f"📝 答えパターンで抽出: {found}")
-                    return found
-        
-        # パターン4: 文中の最後に現れる有効な選択肢文字
-        # 文章を句読点で分割して、最後のセクションから抽出
-        sentences = re.split(r'[.!?。]', response_upper)
-        for sentence in reversed(sentences):
-            for choice in valid_choices:
-                if f' {choice} ' in f' {sentence} ' or f'({choice})' in sentence:
-                    if self.config.debug.verbose:
-                        print(f"📝 文末パターンで抽出: {choice}")
-                    return choice
-        
-        # パターン5: 単独の選択肢文字（最初に見つかるもの）
+        # パターン2: 単独の選択肢文字（最も一般的）
         for choice in valid_choices:
             # 単語境界での検索（より厳密）
             pattern = rf'\b{choice}\b'
@@ -340,8 +295,22 @@ class SycophancyAnalyzer:
                     print(f"📝 単語境界パターンで抽出: {choice}")
                 return choice
         
+        # パターン3: 文字列の最初または最後の有効な選択肢
+        for choice in valid_choices:
+            if response_upper.startswith(choice) or response_upper.endswith(choice):
+                if self.config.debug.verbose:
+                    print(f"📝 開始/終了パターンで抽出: {choice}")
+                return choice
+        
+        # パターン4: 文字列内のどこかにある有効な選択肢（最後の手段）
+        for choice in valid_choices:
+            if choice in response_upper:
+                if self.config.debug.verbose:
+                    print(f"📝 包含パターンで抽出: {choice}")
+                return choice
+        
         if self.config.debug.verbose:
-            print(f"⚠️ 有効な選択肢が見つかりません。応答: '{response[:200]}...'")
+            print(f"⚠️ 有効な選択肢が見つかりません。応答: '{response[:50]}...'")
             print(f"⚠️ 有効な選択肢: {valid_choices}")
         
         return None
@@ -593,12 +562,11 @@ class SycophancyAnalyzer:
                                     current_token_text = ""
                                 elif (hasattr(self.tokenizer, 'eos_token_id') and 
                                       self.tokenizer.eos_token_id is not None and 
-                                      token_id == self.tokenizer.eos_token_id and step == 0):
-                                    # 最初のトークンがEOSの場合は続行を試みる
-                                    print(f"⚠️ 最初のトークンがEOS ({token_id})です。続行を試みます")
-                                    current_token_text = ""
-                                    # EOSトークンをスキップして次のトークンを生成するために続行
-                                    continue
+                                      token_id == self.tokenizer.eos_token_id):
+                                    # EOSトークンを検出したら即座に終了
+                                    if self.config.debug.verbose:
+                                        print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                                    break
                                 else:
                                     current_token_text = self.tokenizer.decode([token_id], skip_special_tokens=True)
                                     
@@ -612,30 +580,37 @@ class SycophancyAnalyzer:
                             if self.config.debug.verbose:
                                 print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_token_text}'")
                             
-                            # EOSトークンで停止（ただし最初のトークンは除外）
-                            if (hasattr(self.tokenizer, 'eos_token_id') and 
-                                self.tokenizer.eos_token_id is not None and 
-                                next_token.item() == self.tokenizer.eos_token_id and 
-                                step > 0):  # 最初のトークンがEOSでも続行
+                            # 早期終了条件: 選択肢文字の検出
+                            current_full_text = ''.join(generated_text_parts).strip()
+                            
+                            # パターン1: 単一の選択肢文字（A、B、C等）が生成された場合
+                            if len(current_full_text) == 1 and current_full_text.upper() in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']:
                                 if self.config.debug.verbose:
-                                    print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
+                                    print(f"✅ 単一選択肢文字で終了: '{current_full_text}' (ステップ: {step + 1})")
                                 break
                             
-                            # A-Eの文字が生成された場合の早期終了（回答生成の改善）
-                            # コメントアウト: LLMの完全な応答を取得するため
-                            # current_full_text = ''.join(generated_text_parts).strip()
-                            # if len(current_full_text) > 0:
-                            #     # 単一の文字A-Eが生成された場合
-                            #     if current_full_text.upper() in ['A', 'B', 'C', 'D', 'E']:
-                            #         if self.config.debug.verbose:
-                            #             print(f"✅ 回答文字検出で生成終了: '{current_full_text}' (ステップ: {step + 1})")
-                            #         break
-                            #     
-                            #     # 改行や空白が続いた場合の早期終了
-                            #     if step >= 2 and len(current_full_text.strip()) == 0:
-                            #         if self.config.debug.verbose:
-                            #             print(f"✅ 空白文字で生成終了 (ステップ: {step + 1})")
-                            #         break
+                            # パターン2: 括弧付き選択肢 (A)、(B)等
+                            if re.match(r'^\([A-J]\)$', current_full_text.upper()):
+                                if self.config.debug.verbose:
+                                    print(f"✅ 括弧付き選択肢で終了: '{current_full_text}' (ステップ: {step + 1})")
+                                break
+                            
+                            # パターン3: 改行後に質問の繰り返しを検出
+                            if '\n' in current_full_text and ('Question:' in current_full_text or 'Options:' in current_full_text):
+                                # 質問の繰り返しを検出したら、改行前の部分のみを使用
+                                response_before_newline = current_full_text.split('\n')[0].strip()
+                                if self.config.debug.verbose:
+                                    print(f"⚠️ 質問繰り返し検出。改行前の部分を使用: '{response_before_newline}'")
+                                # generated_text_partsを調整
+                                generated_text_parts = [response_before_newline]
+                                break
+                            
+                            # パターン4: 過度に長い応答の制限
+                            if len(current_full_text) > 100:  # 100文字を超えた場合
+                                if self.config.debug.verbose:
+                                    print(f"⚠️ 応答が長すぎます。最初の100文字を使用")
+                                generated_text_parts = [current_full_text[:100]]
+                                break
                             
                         except Exception as step_error:
                             print(f"❌ 生成ステップ {step + 1} でエラー: {step_error}")
