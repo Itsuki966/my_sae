@@ -392,7 +392,20 @@ class SycophancyAnalyzer:
             
             # トークン化
             try:
-                inputs = self.tokenizer.encode(formatted_prompt, return_tensors="pt").to(self.device)
+                # Llama3の場合はBOSトークンを追加
+                if 'llama' in self.config.model.name.lower():
+                    # BOS トークンを手動で追加（Llama3では重要）
+                    if hasattr(self.tokenizer, 'bos_token_id') and self.tokenizer.bos_token_id is not None:
+                        inputs = self.tokenizer.encode(formatted_prompt, return_tensors="pt", add_special_tokens=True).to(self.device)
+                        if self.config.debug.verbose:
+                            print(f"🔤 BOSトークン付きでトークン化: {inputs[0][:5].tolist()}...")
+                    else:
+                        inputs = self.tokenizer.encode(formatted_prompt, return_tensors="pt").to(self.device)
+                        if self.config.debug.verbose:
+                            print(f"⚠️ BOSトークンが利用できません")
+                else:
+                    inputs = self.tokenizer.encode(formatted_prompt, return_tensors="pt").to(self.device)
+                
                 original_length = inputs.shape[1]
                 
                 if self.config.debug.verbose:
@@ -499,6 +512,14 @@ class SycophancyAnalyzer:
                                 if token_id < 0 or token_id >= self.tokenizer.vocab_size:
                                     print(f"⚠️ 無効なトークンID: {token_id}. スキップします")
                                     current_token_text = ""
+                                elif (hasattr(self.tokenizer, 'eos_token_id') and 
+                                      self.tokenizer.eos_token_id is not None and 
+                                      token_id == self.tokenizer.eos_token_id and step == 0):
+                                    # 最初のトークンがEOSの場合は続行を試みる
+                                    print(f"⚠️ 最初のトークンがEOS ({token_id})です。続行を試みます")
+                                    current_token_text = ""
+                                    # EOSトークンをスキップして次のトークンを生成するために続行
+                                    continue
                                 else:
                                     current_token_text = self.tokenizer.decode([token_id], skip_special_tokens=True)
                                     
@@ -512,10 +533,11 @@ class SycophancyAnalyzer:
                             if self.config.debug.verbose:
                                 print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_token_text}'")
                             
-                            # EOSトークンで停止
+                            # EOSトークンで停止（ただし最初のトークンは除外）
                             if (hasattr(self.tokenizer, 'eos_token_id') and 
                                 self.tokenizer.eos_token_id is not None and 
-                                next_token.item() == self.tokenizer.eos_token_id):
+                                next_token.item() == self.tokenizer.eos_token_id and 
+                                step > 0):  # 最初のトークンがEOSでも続行
                                 if self.config.debug.verbose:
                                     print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
                                 break
@@ -1271,12 +1293,12 @@ def main():
         results = analyzer.run_complete_analysis()
         
         # 結果の保存
-        output_file = os.path.join(args.output_dir, f"analysis_results_{config.model.name}_{config.data.sample_size}.json")
+        output_file = os.path.join(args.output_dir, f"analysis_results_{config.model.name.replace('/', '_')}_{config.data.sample_size}.json")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results['analysis'], f, indent=2, ensure_ascii=False)
         
         # 設定の保存
-        config_file = os.path.join(args.output_dir, f"config_{config.model.name}_{config.data.sample_size}.json")
+        config_file = os.path.join(args.output_dir, f"config_{config.model.name.replace('/', '_')}_{config.data.sample_size}.json")
         config.save_to_file(config_file)
         
         # 簡易サマリー表示
