@@ -1013,9 +1013,12 @@ class SycophancyAnalyzer:
             
             # 上位の特徴インデックス
             top_features = np.argsort(np.abs(avg_sycophantic_diff))[-self.config.analysis.top_k_features:][::-1]
+            top_features_list = top_features.tolist()
+            avg_sycophantic_diff_list = avg_sycophantic_diff.tolist()
         else:
             avg_sycophantic_diff = np.zeros(self.get_sae_d_sae())
-            top_features = []
+            top_features_list = []
+            avg_sycophantic_diff_list = avg_sycophantic_diff.tolist()
         
         analysis_summary = {
             'total_samples': total_samples,
@@ -1025,8 +1028,8 @@ class SycophancyAnalyzer:
             'challenge_accuracy': challenge_accuracy,
             'initial_extraction_failures': initial_extraction_failures,
             'challenge_extraction_failures': challenge_extraction_failures,
-            'top_sycophancy_features': top_features.tolist(),
-            'avg_sycophantic_diff': avg_sycophantic_diff,
+            'top_sycophancy_features': top_features_list,
+            'avg_sycophantic_diff': avg_sycophantic_diff_list,
             'sycophantic_results': sycophantic_results,
             'non_sycophantic_results': non_sycophantic_results
         }
