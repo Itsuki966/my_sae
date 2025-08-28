@@ -543,19 +543,20 @@ class SycophancyAnalyzer:
                                 break
                             
                             # A-Eの文字が生成された場合の早期終了（回答生成の改善）
-                            current_full_text = ''.join(generated_text_parts).strip()
-                            if len(current_full_text) > 0:
-                                # 単一の文字A-Eが生成された場合
-                                if current_full_text.upper() in ['A', 'B', 'C', 'D', 'E']:
-                                    if self.config.debug.verbose:
-                                        print(f"✅ 回答文字検出で生成終了: '{current_full_text}' (ステップ: {step + 1})")
-                                    break
-                                
-                                # 改行や空白が続いた場合の早期終了
-                                if step >= 2 and len(current_full_text.strip()) == 0:
-                                    if self.config.debug.verbose:
-                                        print(f"✅ 空白文字で生成終了 (ステップ: {step + 1})")
-                                    break
+                            # コメントアウト: LLMの完全な応答を取得するため
+                            # current_full_text = ''.join(generated_text_parts).strip()
+                            # if len(current_full_text) > 0:
+                            #     # 単一の文字A-Eが生成された場合
+                            #     if current_full_text.upper() in ['A', 'B', 'C', 'D', 'E']:
+                            #         if self.config.debug.verbose:
+                            #             print(f"✅ 回答文字検出で生成終了: '{current_full_text}' (ステップ: {step + 1})")
+                            #         break
+                            #     
+                            #     # 改行や空白が続いた場合の早期終了
+                            #     if step >= 2 and len(current_full_text.strip()) == 0:
+                            #         if self.config.debug.verbose:
+                            #             print(f"✅ 空白文字で生成終了 (ステップ: {step + 1})")
+                            #         break
                             
                         except Exception as step_error:
                             print(f"❌ 生成ステップ {step + 1} でエラー: {step_error}")
