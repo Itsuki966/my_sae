@@ -201,7 +201,10 @@ class SycophancyAnalyzer:
                         print(f"  'answers'の内容（抜粋）: {data[0]['base']['answers'][:100]}...")
                 else:
                     print(f"  ⚠️ 'base'キーが見つかりません")
-            
+                    
+            # answersキーを持たないデータを分析データから削除
+            data = [item for item in data if 'answers' in item.get('base', {})]
+
             # サンプルサイズに制限
             if len(data) > self.config.data.sample_size:
                 np.random.seed(self.config.data.random_seed)
