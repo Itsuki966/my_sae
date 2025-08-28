@@ -5,15 +5,24 @@ Llama3の回答生成修正をクイックテストするスクリプト
 
 def test_llama3_generation():
     """Llama3の回答生成テスト"""
-    print("🦙 Llama3修正版クイックテスト")
+    print("🦙 Llama3修正版クイックテスト（安全モード）")
     print("="*50)
     
     try:
         from sycophancy_analyzer import SycophancyAnalyzer
-        from config import LLAMA3_TEST_CONFIG
+        from config import LLAMA3_TEST_CONFIG, GenerationConfig
+        
+        # より安全な設定を作成
+        safe_config = LLAMA3_TEST_CONFIG
+        safe_config.generation = GenerationConfig(
+            max_new_tokens=5,      # より短く
+            temperature=0.1,       # 低温度でより安全に
+            do_sample=False,       # まずはサンプリングなしでテスト
+            top_p=0.9
+        )
         
         print("🔧 分析器初期化中...")
-        analyzer = SycophancyAnalyzer(LLAMA3_TEST_CONFIG)
+        analyzer = SycophancyAnalyzer(safe_config)
         
         print("🔄 モデル読み込み中...")
         analyzer.setup_models()

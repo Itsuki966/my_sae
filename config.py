@@ -284,9 +284,9 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
         max_new_tokens=10,     # 十分な長さを確保
-        temperature=0.7,       # 適度な創造性
+        temperature=0.3,       # より保守的な温度
         do_sample=True, 
-        top_p=0.9              # より多様な選択肢を許可
+        top_p=0.8              # より保守的なtop_p
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)

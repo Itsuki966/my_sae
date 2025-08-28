@@ -434,30 +434,57 @@ class SycophancyAnalyzer:
                             
                             # サンプリングまたはグリーディ選択
                             if do_sample and temperature > 0.01:
-                                # top-pサンプリング（改良版）
-                                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-                                
-                                # top-p閾値を超えるトークンをマスク
-                                sorted_indices_to_remove = cumulative_probs > top_p
-                                # 最低1つのトークンは残す
-                                if sorted_indices_to_remove.sum() < len(sorted_indices_to_remove):
-                                    sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
-                                    sorted_indices_to_remove[0] = False
-                                
-                                # マスクを適用
-                                indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                                next_token_logits[indices_to_remove] = -float('inf')
-                                
-                                # top-kも適用（Llama3で効果的）
-                                top_k = 50
-                                if top_k > 0:
-                                    values, _ = torch.topk(next_token_logits, top_k)
-                                    next_token_logits[next_token_logits < values[-1]] = -float('inf')
-                                
-                                # サンプリング
-                                probs = torch.softmax(next_token_logits, dim=-1)
-                                next_token = torch.multinomial(probs, num_samples=1)
+                                # top-pサンプリング（改良版・CUDA安全）
+                                try:
+                                    # ロジットの正規化と安全性チェック
+                                    next_token_logits = torch.clamp(next_token_logits, min=-1e4, max=1e4)
+                                    
+                                    # NaNやInfをチェック
+                                    if torch.isnan(next_token_logits).any() or torch.isinf(next_token_logits).any():
+                                        print("⚠️ ロジットにNaNまたはInfが含まれています。グリーディ選択にフォールバック")
+                                        next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                                    else:
+                                        # Softmaxの前に安全性を確保
+                                        shifted_logits = next_token_logits - next_token_logits.max()
+                                        
+                                        # top-kフィルタリング（より安全）
+                                        top_k = 50
+                                        if top_k > 0:
+                                            values, indices = torch.topk(shifted_logits, min(top_k, shifted_logits.size(-1)))
+                                            shifted_logits[shifted_logits < values[-1]] = -float('inf')
+                                        
+                                        # top-pフィルタリング
+                                        sorted_logits, sorted_indices = torch.sort(shifted_logits, descending=True)
+                                        cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                                        
+                                        # top-p閾値を超えるトークンをマスク
+                                        sorted_indices_to_remove = cumulative_probs > top_p
+                                        # 最低1つのトークンは残す
+                                        if sorted_indices_to_remove.sum() >= len(sorted_indices_to_remove):
+                                            sorted_indices_to_remove[0] = False
+                                        else:
+                                            sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                                            sorted_indices_to_remove[0] = False
+                                        
+                                        # マスクを適用
+                                        indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                                        shifted_logits[indices_to_remove] = -float('inf')
+                                        
+                                        # 最終的な確率計算（数値的安定性を保証）
+                                        probs = torch.softmax(shifted_logits, dim=-1)
+                                        
+                                        # 確率の検証
+                                        if torch.isnan(probs).any() or torch.isinf(probs).any() or (probs < 0).any():
+                                            print("⚠️ 確率テンソルに無効な値があります。グリーディ選択にフォールバック")
+                                            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                                        else:
+                                            # 安全なサンプリング
+                                            next_token = torch.multinomial(probs, num_samples=1)
+                                            
+                                except Exception as sampling_error:
+                                    print(f"⚠️ サンプリングエラー: {sampling_error}")
+                                    print("グリーディ選択にフォールバック")
+                                    next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
                             else:
                                 # グリーディデコーディング
                                 next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
@@ -465,8 +492,20 @@ class SycophancyAnalyzer:
                             # 新しいトークンをシーケンスに追加
                             generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
                             
-                            # 生成されたトークンをデコードして確認
-                            current_token_text = self.tokenizer.decode(next_token, skip_special_tokens=True)
+                            # 生成されたトークンをデコードして確認（安全版）
+                            try:
+                                # トークンIDの検証
+                                token_id = next_token.item()
+                                if token_id < 0 or token_id >= self.tokenizer.vocab_size:
+                                    print(f"⚠️ 無効なトークンID: {token_id}. スキップします")
+                                    current_token_text = ""
+                                else:
+                                    current_token_text = self.tokenizer.decode([token_id], skip_special_tokens=True)
+                                    
+                            except Exception as decode_error:
+                                print(f"⚠️ トークンデコードエラー: {decode_error}")
+                                current_token_text = ""
+                            
                             generated_text_parts.append(current_token_text)
                             
                             # デバッグ情報の出力
