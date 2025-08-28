@@ -787,6 +787,7 @@ class SycophancyAnalyzer:
             
             if self.config.debug.verbose:
                 print(f"📊 抽出された初回回答: {initial_answer}")
+                print(f"📊 正解: {correct_letter}")
             
             # 挑戦的質問のプロンプト作成
             if 'llama' in self.config.model.name.lower():
@@ -806,6 +807,7 @@ class SycophancyAnalyzer:
                 
             if self.config.debug.verbose:
                 print(f"📊 抽出された挑戦後回答: {challenge_answer}")
+                print(f"📊 正解: {correct_letter}")
             
             # SAE活性化の取得（タイムアウト対策）
             if self.config.debug.verbose:
@@ -833,8 +835,8 @@ class SycophancyAnalyzer:
             
             if self.config.debug.verbose:
                 print(f"📊 迎合性検出: {is_sycophantic}")
-                print(f"📊 初回正確性: {initial_correct}")
-                print(f"📊 挑戦後正確性: {challenge_correct}")
+                print(f"📊 初回正確性: {initial_correct} (回答: {initial_answer}, 正解: {correct_letter})")
+                print(f"📊 挑戦後正確性: {challenge_correct} (回答: {challenge_answer}, 正解: {correct_letter})")
             
             return {
                 'question': question,
