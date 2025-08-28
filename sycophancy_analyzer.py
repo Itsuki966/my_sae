@@ -654,20 +654,28 @@ class SycophancyAnalyzer:
                 # 指定したフック位置のactivationを取得
                 hook_name = self.config.model.sae_id
                 
+                # SAE ID からレイヤー番号を抽出
+                layer_match = re.search(r'blocks\.(\d+)', hook_name)
+                if layer_match:
+                    layer_num = int(layer_match.group(1))
+                    actual_hook_name = f"blocks.{layer_num}.hook_resid_pre"
+                else:
+                    actual_hook_name = "blocks.12.hook_resid_pre"  # デフォルト
+                
                 # フック名がキャッシュに存在するか確認
-                if hook_name not in cache:
-                    print(f"⚠️ フック名 '{hook_name}' がキャッシュに見つかりません")
+                if actual_hook_name not in cache:
+                    print(f"⚠️ フック名 '{actual_hook_name}' がキャッシュに見つかりません")
                     print(f"利用可能なキー: {list(cache.keys())[:10]}...")  # 最初の10個のみ表示
                     
                     # 類似のキーを探す（blocks.X.hook_resid_preの形式）
                     similar_keys = [k for k in cache.keys() if 'hook_resid_pre' in k and 'blocks' in k]
                     if similar_keys:
-                        hook_name = similar_keys[0]
-                        print(f"代替フック名を使用: {hook_name}")
+                        actual_hook_name = similar_keys[0]
+                        print(f"代替フック名を使用: {actual_hook_name}")
                     else:
-                        raise KeyError(f"適切なフック名が見つかりません: {hook_name}")
+                        raise KeyError(f"適切なフック名が見つかりません: {actual_hook_name}")
                 
-                activation = cache[hook_name]
+                activation = cache[actual_hook_name]
                 
                 # activationの形状を確認して調整
                 if activation.dim() > 2:
@@ -838,9 +846,9 @@ class SycophancyAnalyzer:
                 'challenge_answer': challenge_answer,
                 'challenge_correct': challenge_correct,
                 'is_sycophantic': is_sycophantic,
-                'initial_activations': initial_activations.cpu().numpy(),
-                'challenge_activations': challenge_activations.cpu().numpy(),
-                'activation_diff': (challenge_activations - initial_activations).cpu().numpy()
+                'initial_activations': initial_activations.cpu().float().numpy(),
+                'challenge_activations': challenge_activations.cpu().float().numpy(),
+                'activation_diff': (challenge_activations - initial_activations).cpu().float().numpy()
             }
             
         except Exception as e:
@@ -1294,8 +1302,14 @@ def main():
         
         # 結果の保存
         output_file = os.path.join(args.output_dir, f"analysis_results_{config.model.name.replace('/', '_')}_{config.data.sample_size}.json")
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(results['analysis'], f, indent=2, ensure_ascii=False)
+        
+        # 結果が存在する場合のみ保存
+        if results.get('analysis'):
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(results['analysis'], f, indent=2, ensure_ascii=False)
+            print(f"✅ 分析結果を保存: {output_file}")
+        else:
+            print("⚠️ 保存可能な分析結果がありません")
         
         # 設定の保存
         config_file = os.path.join(args.output_dir, f"config_{config.model.name.replace('/', '_')}_{config.data.sample_size}.json")
@@ -1307,9 +1321,15 @@ def main():
         print("📊 最終結果サマリー:")
         print(f"  モデル: {config.model.name}")
         print(f"  サンプル数: {config.data.sample_size}")
-        print(f"  迎合率: {summary['sycophancy_rate']:.1%}")
-        print(f"  初回正答率: {summary['initial_accuracy']:.1%}")
-        print(f"  挑戦後正答率: {summary['challenge_accuracy']:.1%}")
+        
+        # サマリーが空でないかチェック
+        if summary and 'sycophancy_rate' in summary:
+            print(f"  迎合率: {summary['sycophancy_rate']:.1%}")
+            print(f"  初回正答率: {summary['initial_accuracy']:.1%}")
+            print(f"  挑戦後正答率: {summary['challenge_accuracy']:.1%}")
+        else:
+            print("  ⚠️ 分析結果が不完全です")
+            
         print(f"  結果保存先: {output_file}")
         print("=" * 50)
         
