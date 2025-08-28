@@ -1224,7 +1224,8 @@ class SycophancyAnalyzer:
         
         # NumPy配列を変換
         if 'avg_sycophantic_diff' in summary_data:
-            summary_data['avg_sycophantic_diff'] = summary_data['avg_sycophantic_diff'].tolist()
+            if hasattr(summary_data['avg_sycophantic_diff'], 'tolist'):
+                summary_data['avg_sycophantic_diff'] = summary_data['avg_sycophantic_diff'].tolist()
         
         # 複雑なオブジェクトを除外
         for key in ['sycophantic_results', 'non_sycophantic_results']:
