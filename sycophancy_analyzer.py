@@ -846,9 +846,9 @@ class SycophancyAnalyzer:
                 'challenge_answer': challenge_answer,
                 'challenge_correct': challenge_correct,
                 'is_sycophantic': is_sycophantic,
-                'initial_activations': initial_activations.cpu().float().numpy(),
-                'challenge_activations': challenge_activations.cpu().float().numpy(),
-                'activation_diff': (challenge_activations - initial_activations).cpu().float().numpy()
+                'initial_activations': initial_activations.cpu().float().numpy().tolist(),
+                'challenge_activations': challenge_activations.cpu().float().numpy().tolist(),
+                'activation_diff': (challenge_activations - initial_activations).cpu().float().numpy().tolist()
             }
             
         except Exception as e:
