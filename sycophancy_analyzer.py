@@ -348,7 +348,7 @@ class SycophancyAnalyzer:
     
     def get_model_response(self, prompt: str) -> str:
         """
-        モデルからの応答を取得（Llama3対応改善版）
+        モデルからの応答を取得（Llama3対応大幅改善版）
         
         Args:
             prompt: 入力プロンプト
@@ -411,56 +411,15 @@ class SycophancyAnalyzer:
             if self.config.debug.verbose:
                 print(f"🔄 テキスト生成中... (最大{max_new_tokens}トークン, temp={temperature})")
             
-            with torch.no_grad():
-                try:
-                    # HookedTransformerのgenerateメソッドを試行（改良版）
-                    effective_temperature = max(temperature, 0.01) if do_sample else temperature
-                    
-                    # Llama3用の特別な生成設定
-                    if 'llama' in self.config.model.name.lower():
-                        # Llama3に最適化されたパラメータ
-                        generate_kwargs = {
-                            'max_new_tokens': max_new_tokens,
-                            'temperature': effective_temperature if do_sample else 1.0,
-                            'do_sample': do_sample,
-                        }
-                        
-                        if do_sample:
-                            generate_kwargs['top_p'] = top_p
-                            generate_kwargs['top_k'] = 50  # Llama3で効果的
-                        
-                        # 停止条件の設定
-                        if hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None:
-                            generate_kwargs['eos_token_id'] = self.tokenizer.eos_token_id
-                            
-                    else:
-                        # 他のモデル用の設定
-                        generate_kwargs = {
-                            'max_new_tokens': max_new_tokens,
-                            'temperature': effective_temperature,
-                        }
-                        
-                        if do_sample:
-                            generate_kwargs['do_sample'] = True
-                            generate_kwargs['top_p'] = top_p
-                    
-                    if self.config.debug.verbose:
-                        print(f"🔧 生成パラメータ: {generate_kwargs}")
-                    
-                    outputs = self.model.generate(inputs, **generate_kwargs)
-                    
-                    # 生成されたトークンを取得
-                    if hasattr(outputs, 'sequences'):
-                        generated_tokens = outputs.sequences[0]
-                    else:
-                        generated_tokens = outputs if len(outputs.shape) > 1 else outputs.unsqueeze(0)
-                        
-                except (AttributeError, TypeError, RuntimeError) as e:
-                    print(f"⚠️ generateメソッドが利用できません ({e})。自作生成ループを使用します")
-                    
-                    # 自作の生成ループ（改良版）
-                    generated_tokens = inputs.clone()
-                    
+            # Llama3では常に自作生成ループを使用（HookedTransformerのgenerateメソッドに問題があるため）
+            if 'llama' in self.config.model.name.lower():
+                if self.config.debug.verbose:
+                    print("🦙 Llama3専用生成ループを使用")
+                
+                generated_tokens = inputs.clone()
+                generated_text_parts = []
+                
+                with torch.no_grad():
                     for step in range(max_new_tokens):
                         try:
                             # 現在のシーケンスでモデルを実行
@@ -470,25 +429,31 @@ class SycophancyAnalyzer:
                             next_token_logits = logits[0, -1, :]
                             
                             # 温度スケーリング
-                            effective_temp = max(temperature, 0.01) if do_sample else 1.0
-                            if effective_temp != 1.0:
-                                next_token_logits = next_token_logits / effective_temp
+                            if temperature > 0.01:
+                                next_token_logits = next_token_logits / temperature
                             
                             # サンプリングまたはグリーディ選択
-                            if do_sample and effective_temp > 0.01:
-                                # top-pサンプリング
+                            if do_sample and temperature > 0.01:
+                                # top-pサンプリング（改良版）
                                 sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
                                 cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
                                 
-                                # top-p閾値を超えるトークンを除外
+                                # top-p閾値を超えるトークンをマスク
                                 sorted_indices_to_remove = cumulative_probs > top_p
-                                if sorted_indices_to_remove.sum() > 1:
+                                # 最低1つのトークンは残す
+                                if sorted_indices_to_remove.sum() < len(sorted_indices_to_remove):
                                     sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
                                     sorted_indices_to_remove[0] = False
                                 
-                                # 除外するインデックスを元の順序に戻す
+                                # マスクを適用
                                 indices_to_remove = sorted_indices[sorted_indices_to_remove]
                                 next_token_logits[indices_to_remove] = -float('inf')
+                                
+                                # top-kも適用（Llama3で効果的）
+                                top_k = 50
+                                if top_k > 0:
+                                    values, _ = torch.topk(next_token_logits, top_k)
+                                    next_token_logits[next_token_logits < values[-1]] = -float('inf')
                                 
                                 # サンプリング
                                 probs = torch.softmax(next_token_logits, dim=-1)
@@ -500,10 +465,13 @@ class SycophancyAnalyzer:
                             # 新しいトークンをシーケンスに追加
                             generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
                             
+                            # 生成されたトークンをデコードして確認
+                            current_token_text = self.tokenizer.decode(next_token, skip_special_tokens=True)
+                            generated_text_parts.append(current_token_text)
+                            
                             # デバッグ情報の出力
-                            if self.config.debug.verbose and step < 5:  # 最初の5ステップのみ
-                                current_text = self.tokenizer.decode(generated_tokens[0][original_length:], skip_special_tokens=False)
-                                print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_text}'")
+                            if self.config.debug.verbose:
+                                print(f"📊 ステップ {step + 1}: トークン {next_token.item()} -> '{current_token_text}'")
                             
                             # EOSトークンで停止
                             if (hasattr(self.tokenizer, 'eos_token_id') and 
@@ -512,47 +480,86 @@ class SycophancyAnalyzer:
                                 if self.config.debug.verbose:
                                     print(f"✅ EOSトークンで生成終了 (ステップ: {step + 1})")
                                 break
+                            
+                            # A-Eの文字が生成された場合の早期終了（回答生成の改善）
+                            current_full_text = ''.join(generated_text_parts).strip()
+                            if len(current_full_text) > 0:
+                                # 単一の文字A-Eが生成された場合
+                                if current_full_text.upper() in ['A', 'B', 'C', 'D', 'E']:
+                                    if self.config.debug.verbose:
+                                        print(f"✅ 回答文字検出で生成終了: '{current_full_text}' (ステップ: {step + 1})")
+                                    break
                                 
-                            # 空白または改行が続いた場合の早期終了（Llama3での応答品質向上）
-                            if step >= 2:  # 最低限の長さは確保
-                                recent_text = self.tokenizer.decode(generated_tokens[0][-3:], skip_special_tokens=True)
-                                if len(recent_text.strip()) == 0:  # 空白のみが続く場合
+                                # 改行や空白が続いた場合の早期終了
+                                if step >= 2 and len(current_full_text.strip()) == 0:
                                     if self.config.debug.verbose:
                                         print(f"✅ 空白文字で生成終了 (ステップ: {step + 1})")
                                     break
                             
                         except Exception as step_error:
-                            print(f"❌ 生成ステップ {step} でエラー: {step_error}")
+                            print(f"❌ 生成ステップ {step + 1} でエラー: {step_error}")
+                            if self.config.debug.verbose:
+                                import traceback
+                                traceback.print_exc()
                             break
                 
-                # 新しく生成された部分のみを取得
-                generated_part = generated_tokens[0][original_length:]
+                # 生成された部分を結合
+                response = ''.join(generated_text_parts).strip()
                 
-                # デコード
-                response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+            else:
+                # 非Llama3モデルの場合は既存のロジックを使用
+                with torch.no_grad():
+                    try:
+                        # HookedTransformerのgenerateメソッドを試行
+                        effective_temperature = max(temperature, 0.01) if do_sample else temperature
+                        
+                        generate_kwargs = {
+                            'max_new_tokens': max_new_tokens,
+                            'temperature': effective_temperature,
+                        }
+                        
+                        if do_sample:
+                            generate_kwargs['do_sample'] = True
+                            generate_kwargs['top_p'] = top_p
+                        
+                        outputs = self.model.generate(inputs, **generate_kwargs)
+                        
+                        # 生成されたトークンを取得
+                        if hasattr(outputs, 'sequences'):
+                            generated_tokens = outputs.sequences[0]
+                        else:
+                            generated_tokens = outputs if len(outputs.shape) > 1 else outputs.unsqueeze(0)
+                        
+                        # 新しく生成された部分のみを取得
+                        generated_part = generated_tokens[original_length:]
+                        response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                        
+                    except Exception as e:
+                        print(f"⚠️ generateメソッドエラー: {e}")
+                        return ""
+            
+            # Llama3の特別な後処理
+            if 'llama' in self.config.model.name.lower() and response:
+                # Llama3の典型的な終了パターンを処理
+                for end_pattern in ['<|eot_id|>', '<|end_of_text|>', 'assistant', 'Assistant']:
+                    if end_pattern in response:
+                        response = response.split(end_pattern)[0]
+                        break
                 
-                # Llama3の特別な後処理
-                if 'llama' in self.config.model.name.lower() and response:
-                    # Llama3の典型的な終了パターンを処理
-                    for end_pattern in ['<|eot_id|>', '<|end_of_text|>', 'assistant', 'Assistant']:
-                        if end_pattern in response:
-                            response = response.split(end_pattern)[0]
-                            break
-                    
-                    # 余分な改行や空白をクリーンアップ
-                    response = response.strip()
-                
-                if self.config.debug.verbose:
-                    print(f"✅ 生成完了: {len(generated_part)}トークン生成")
-                
-                # デバッグ出力
-                if self.config.debug.show_responses:
-                    print("\n🤖 LLMからの応答:")
-                    print("-" * 40)
-                    print(response)
-                    print("-" * 40)
-                
-                return response
+                # 余分な改行や空白をクリーンアップ
+                response = response.strip()
+            
+            if self.config.debug.verbose:
+                print(f"✅ 生成完了: '{response}'")
+            
+            # デバッグ出力
+            if self.config.debug.show_responses:
+                print("\n🤖 LLMからの応答:")
+                print("-" * 40)
+                print(response)
+                print("-" * 40)
+            
+            return response
                 
         except Exception as e:
             print(f"❌ 応答生成エラー: {e}")
