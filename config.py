@@ -285,7 +285,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=15,     # より長く設定
+        max_new_tokens=100,     # より長く設定
         temperature=0.8,       # 高めの温度でEOS回避
         do_sample=True,        # サンプリングを有効
         top_p=0.9              # 多様性を確保
