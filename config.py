@@ -295,7 +295,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=50,     # 推論に十分なトークン数に増加
+        max_new_tokens=200,     # 推論に十分なトークン数に増加
         temperature=0.3,       # 適度な探索を可能にする温度設定
         do_sample=True,        # サンプリングを有効
         top_p=0.9              # より多様性を許可
