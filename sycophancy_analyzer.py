@@ -253,24 +253,13 @@ class SycophancyAnalyzer:
             else:
                 print("🔧 CPUモードで継続")
             
-            # SAEの読み込み（推奨方法を使用）
-            print("🔄 SAEを推奨方法で読み込み中...")
-            try:
-                # まず推奨されているfrom_pretrained_no_processingを試行
-                sae_result = SAE.from_pretrained_no_processing(
-                    release=self.config.model.sae_release,
-                    sae_id=self.config.model.sae_id,
-                    device='cpu'  # SAEはCPUで読み込み
-                )
-                print("✅ from_pretrained_no_processing を使用してSAEを読み込み")
-            except AttributeError:
-                # from_pretrained_no_processingが利用できない場合は従来の方法
-                print("⚠️ from_pretrained_no_processing が利用できません。従来の方法を使用します")
-                sae_result = SAE.from_pretrained(
-                    release=self.config.model.sae_release,
-                    sae_id=self.config.model.sae_id,
-                    device='cpu'
-                )
+            # SAEの読み込み（軽量設定）
+            print("🔄 SAEを読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device='cpu'  # SAEはCPUで読み込み
+            )
             
             if isinstance(sae_result, tuple):
                 self.sae = sae_result[0]
@@ -369,45 +358,25 @@ class SycophancyAnalyzer:
             # メモリクリア
             self.optimize_memory_usage()
             
-            # デバイスと精度の決定
-            use_gpu = torch.cuda.is_available()
-            if use_gpu:
-                available_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
-                print(f"🔧 利用可能GPUメモリ: {available_memory:.2f}GB")
-                if available_memory < 6.0:
-                    use_gpu = False
-                    print("⚠️ GPU メモリ不足のため、CPUモードで実行します")
+            # CPUモードで強制読み込み（メモリ制限対策）
+            print("🔄 CPUで軽量読み込み...")
             
-            # 精度の決定（CPUの場合はbfloat16またはfloat32を使用）
-            if use_gpu:
-                torch_dtype = torch.float16
-                device = "cuda"
-                print("🚀 GPU (float16) モードで読み込み中...")
-            else:
-                # CPUの場合はbfloat16を試し、サポートされていなければfloat32
-                if torch.cuda.is_bf16_supported() or hasattr(torch, 'bfloat16'):
-                    torch_dtype = torch.bfloat16
-                    print("🔧 CPU (bfloat16) モードで読み込み中...")
-                else:
-                    torch_dtype = torch.float32
-                    print("� CPU (float32) モードで読み込み中...")
-                device = "cpu"
-            
-            # モデルの読み込み
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
-                device=device,
-                torch_dtype=torch_dtype,
+                device="cpu",  # 強制的にCPU
+                torch_dtype=torch.float16,  # メモリ節約
                 low_cpu_mem_usage=True,
                 center_writing_weights=False,
                 trust_remote_code=True,
             )
             
-            print(f"✅ モデル {self.config.model.name} を{device}({torch_dtype})で読み込み完了")
+            print(f"✅ モデル {self.config.model.name} をCPUで読み込み完了")
             
-            # CPUで読み込んだ後にGPUに移動する場合
-            if not use_gpu and torch.cuda.is_available():
+            # GPUが利用可能で十分なメモリがある場合のみ移動
+            if torch.cuda.is_available():
                 available_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+                print(f"🔧 利用可能GPUメモリ: {available_memory:.2f}GB")
+                
                 if available_memory > 6.0:  # 6GB以上の場合のみGPU使用を試行
                     try:
                         print("🔄 GPUへの部分移動を試行...")
@@ -422,24 +391,13 @@ class SycophancyAnalyzer:
                 else:
                     print("🔧 GPUメモリ不足のためCPUモードで継続")
             
-            # SAEの読み込み（推奨方法を使用）
-            print("🔄 SAEを推奨方法で読み込み中...")
-            try:
-                # まず推奨されているfrom_pretrained_no_processingを試行
-                sae_result = SAE.from_pretrained_no_processing(
-                    release=self.config.model.sae_release,
-                    sae_id=self.config.model.sae_id,
-                    device="cpu"  # SAEもCPUで安全に読み込み
-                )
-                print("✅ from_pretrained_no_processing を使用してSAEを読み込み")
-            except AttributeError:
-                # from_pretrained_no_processingが利用できない場合は従来の方法
-                print("⚠️ from_pretrained_no_processing が利用できません。従来の方法を使用します")
-                sae_result = SAE.from_pretrained(
-                    release=self.config.model.sae_release,
-                    sae_id=self.config.model.sae_id,
-                    device="cpu"
-                )
+            # SAEの読み込み（軽量設定）
+            print("🔄 SAEを軽量モードで読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device="cpu"  # SAEもCPUで安全に読み込み
+            )
             
             # SAEの処理
             if isinstance(sae_result, tuple):

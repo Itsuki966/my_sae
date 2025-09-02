@@ -19,7 +19,6 @@ class ModelConfig:
     # メモリ効率化設定
     use_accelerate: bool = True      # accelerateライブラリを使用するか
     use_fp16: bool = True           # float16精度を使用するか（メモリ節約）
-    use_bfloat16_on_cpu: bool = True # CPU使用時にbfloat16を使用するか
     low_cpu_mem_usage: bool = True  # CPU使用量を削減するか
     device_map: str = "auto"        # デバイス自動配置（"auto", "sequential", "balanced"）
     max_memory_gb: Optional[float] = None  # 最大メモリ使用量（GB）
