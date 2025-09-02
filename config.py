@@ -295,7 +295,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
         sae_release="seonglae/Llama-3.2-3B-sae",
-        sae_id="Llama-3.2-3B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-3b_512", 
+        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
         device="auto"
     ),
     data=DataConfig(sample_size=5),
@@ -314,7 +314,7 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
         sae_release="seonglae/Llama-3.2-3B-sae",
-        sae_id="Llama-3.2-3B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-3b_512", 
+        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
         device="auto",
         use_accelerate=True,      # accelerateライブラリを有効
         use_fp16=True,           # float16でメモリ削減
@@ -353,7 +353,7 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
         sae_release="seonglae/Llama-3.2-3B-sae",
-        sae_id="Llama-3.2-3B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-3b_512", 
+        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
         device="auto"
     ),
     data=DataConfig(sample_size=1000),
