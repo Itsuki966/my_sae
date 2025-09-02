@@ -26,6 +26,7 @@ import warnings
 import argparse
 import sys
 import gc
+import traceback
 
 # メモリ効率化のための環境変数設定
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
@@ -82,6 +83,7 @@ class SycophancyAnalyzer:
         self.sae = None
         self.tokenizer = None
         self.device = self.config.model.device
+        self.sae_device = None  # SAEのデバイスを追跡
         self.use_chat_template = False  # Llama3のチャットテンプレート使用フラグ
         
         # 結果保存用の属性
@@ -91,6 +93,26 @@ class SycophancyAnalyzer:
         print(f"✅ SycophancyAnalyzer初期化完了")
         print(f"📊 使用設定: {self.config.model.name}")
         print(f"🔧 デバイス: {self.device}")
+    
+    def get_current_sae_device(self) -> str:
+        """SAEの現在のデバイスを取得"""
+        if self.sae is None:
+            return self.device
+        try:
+            sae_device = next(self.sae.parameters()).device
+            return str(sae_device)
+        except (StopIteration, AttributeError):
+            return self.device
+    
+    def ensure_device_consistency(self, tensor: torch.Tensor) -> torch.Tensor:
+        """テンソルをSAEと同じデバイスに移動"""
+        if self.sae is None:
+            return tensor.to(self.device)
+        
+        sae_device = self.get_current_sae_device()
+        if str(tensor.device) != sae_device:
+            return tensor.to(sae_device)
+        return tensor
     
     def optimize_memory_usage(self):
         """メモリ使用量を最適化"""
@@ -249,10 +271,18 @@ class SycophancyAnalyzer:
             # SAEもGPUに移動可能であれば移動
             if torch.cuda.is_available() and torch.cuda.memory_allocated(0) / 1e9 < safe_memory * 0.9:
                 try:
+                    print("🔄 SAEをGPUに移動中...")
                     self.sae = self.sae.to('cuda:0')
+                    self.sae_device = 'cuda:0'
                     print("✅ SAEもGPUに配置")
-                except:
-                    print("⚠️ SAEはCPUに維持")
+                except Exception as sae_gpu_error:
+                    print(f"⚠️ SAEのGPU移動失敗、CPUで継続: {sae_gpu_error}")
+                    self.sae = self.sae.to('cpu')
+                    self.sae_device = 'cpu'
+            else:
+                print("🔧 SAEをCPUに維持")
+                self.sae = self.sae.to('cpu')
+                self.sae_device = 'cpu'
             
             # Tokenizerの取得
             self.tokenizer = self.model.tokenizer
@@ -376,6 +406,23 @@ class SycophancyAnalyzer:
             else:
                 self.sae = sae_result
                 print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
+            
+            # SAEを適切なデバイスに移動
+            # モデルが既にGPUにある場合はSAEもGPUに移動
+            if torch.cuda.is_available() and next(self.model.parameters()).device.type == 'cuda':
+                try:
+                    print("🔄 SAEをGPUに移動中...")
+                    self.sae = self.sae.to('cuda:0')
+                    self.sae_device = 'cuda:0'
+                    print("✅ SAEをGPUに移動完了")
+                except Exception as sae_gpu_error:
+                    print(f"⚠️ SAEのGPU移動失敗、CPUで継続: {sae_gpu_error}")
+                    self.sae = self.sae.to('cpu')
+                    self.sae_device = 'cpu'
+            else:
+                print("🔧 SAEをCPUに維持")
+                self.sae = self.sae.to('cpu')
+                self.sae_device = 'cpu'
             
             # Tokenizerの取得
             self.tokenizer = self.model.tokenizer
@@ -1064,6 +1111,9 @@ class SycophancyAnalyzer:
                         padding = torch.zeros(*activation.shape[:-1], padding_size, device=activation.device)
                         activation = torch.cat([activation, padding], dim=-1)
                 
+                # 重要：activationをSAEと同じデバイスに移動
+                activation = self.ensure_device_consistency(activation)
+                
                 # SAEを通してfeature activationを取得
                 sae_activations = self.sae.encode(activation)
                 
@@ -1074,7 +1124,9 @@ class SycophancyAnalyzer:
             import traceback
             if self.config.debug.verbose:
                 traceback.print_exc()
-            return torch.zeros(self.get_sae_d_sae())
+            # エラー時は適切なデバイスで空のテンソルを返す
+            sae_device = self.get_current_sae_device()
+            return torch.zeros(self.get_sae_d_sae()).to(sae_device)
     
     def run_single_analysis(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """
