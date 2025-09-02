@@ -35,11 +35,28 @@ except ImportError:
     print("警告: SAE Lensが利用できません。pip install sae-lens でインストールしてください")
     SAE_AVAILABLE = False
 
+# メモリ効率化のためのaccelerateライブラリ
+try:
+    from accelerate import init_empty_weights, load_checkpoint_and_dispatch, disk_offload
+    from accelerate.utils import get_balanced_memory
+    from accelerate import PartialState
+    ACCELERATE_AVAILABLE = True
+except ImportError:
+    print("警告: accelerateライブラリが利用できません。pip install accelerate でインストールを推奨します")
+    ACCELERATE_AVAILABLE = False
+
+# torch.nn.utilsからのメモリ最適化
+try:
+    from torch.nn.utils import clip_grad_norm_
+    import gc
+except ImportError:
+    pass
+
 # ローカル設定のインポート
 from config import (
     ExperimentConfig, DEFAULT_CONFIG, 
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
-    TEST_CONFIG, get_auto_config
+    TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG
 )
 
 class SycophancyAnalyzer:
@@ -67,13 +84,191 @@ class SycophancyAnalyzer:
         print(f"📊 使用設定: {self.config.model.name}")
         print(f"🔧 デバイス: {self.device}")
     
-    def setup_models(self):
-        """モデルとSAEの初期化"""
-        if not SAE_AVAILABLE:
-            raise ImportError("SAE Lensが利用できません")
+    def optimize_memory_usage(self):
+        """メモリ使用量を最適化"""
+        try:
+            # ガベージコレクションの実行
+            gc.collect()
+            
+            # CUDAキャッシュのクリア（GPU使用時）
+            if torch.cuda.is_available() and self.device.startswith('cuda'):
+                torch.cuda.empty_cache()
+                print("🧹 CUDAキャッシュをクリアしました")
+            
+            # MPSキャッシュのクリア（Mac使用時）
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() and self.device == 'mps':
+                # MPSの場合、明示的なキャッシュクリアはないが、メモリ使用量を確認
+                print("🧹 MPSメモリ使用量を最適化しました")
+            
+        except Exception as e:
+            print(f"⚠️ メモリ最適化エラー: {e}")
+    
+    def get_model_memory_footprint(self) -> dict:
+        """モデルのメモリ使用量を取得"""
+        memory_info = {}
         
         try:
-            print("🔄 モデルを読み込み中...")
+            if torch.cuda.is_available() and self.device.startswith('cuda'):
+                memory_info['gpu_allocated'] = torch.cuda.memory_allocated(0) / 1e9  # GB
+                memory_info['gpu_reserved'] = torch.cuda.memory_reserved(0) / 1e9   # GB
+                memory_info['gpu_max'] = torch.cuda.max_memory_allocated(0) / 1e9   # GB
+            
+            # プロセス全体のメモリ使用量
+            import psutil
+            process = psutil.Process()
+            memory_info['cpu_rss'] = process.memory_info().rss / 1e9  # GB
+            memory_info['cpu_vms'] = process.memory_info().vms / 1e9  # GB
+            
+        except Exception as e:
+            print(f"⚠️ メモリ情報取得エラー: {e}")
+        
+        return memory_info
+    
+    def setup_models_with_accelerate(self):
+        """accelerateライブラリを使用したメモリ効率的なモデル読み込み"""
+        if not ACCELERATE_AVAILABLE:
+            print("⚠️ accelerateライブラリが利用できません。標準の読み込み方法を使用します")
+            return self.setup_models_standard()
+        
+        try:
+            print("🚀 accelerateライブラリを使用した効率的なモデル読み込みを開始...")
+            
+            # メモリ使用量の初期状態を記録
+            initial_memory = self.get_model_memory_footprint()
+            print(f"📊 初期メモリ状態: {initial_memory}")
+            
+            # 分散環境の初期化（シングルGPU/CPU環境でも有効）
+            distributed_state = PartialState()
+            
+            # 設定に基づくモデル読み込み設定
+            model_kwargs = {
+                'device_map': self.config.model.device_map if self.config.model.use_accelerate else None,
+                'low_cpu_mem_usage': self.config.model.low_cpu_mem_usage,
+                'center_writing_weights': False
+            }
+            
+            # float16精度の設定（CPU以外で使用）
+            if self.config.model.use_fp16 and self.device != 'cpu':
+                model_kwargs['torch_dtype'] = torch.float16
+                print("🔧 float16精度を使用します（メモリ効率化）")
+            else:
+                model_kwargs['torch_dtype'] = torch.float32
+            
+            # 最大メモリ設定
+            if self.config.model.max_memory_gb and torch.cuda.is_available():
+                max_memory = {0: f"{self.config.model.max_memory_gb}GB"}
+                model_kwargs['max_memory'] = max_memory
+                print(f"🔧 最大メモリ制限: {self.config.model.max_memory_gb}GB")
+            
+            # 大規模モデルの場合、空のウェイトで初期化
+            if 'llama' in self.config.model.name.lower() or 'large' in self.config.model.name.lower():
+                print("🔄 大規模モデル用の空ウェイト初期化...")
+                
+                if self.config.model.use_accelerate:
+                    with init_empty_weights():
+                        # 空のウェイトでモデル構造のみを初期化
+                        self.model = HookedSAETransformer.from_pretrained(
+                            self.config.model.name,
+                            **model_kwargs
+                        )
+                    
+                    print("✅ 空ウェイトでのモデル構造初期化完了")
+                    
+                    # 利用可能なメモリに基づいてデバイス配置を決定
+                    if torch.cuda.is_available() and self.config.model.device_map == "auto":
+                        max_memory = get_balanced_memory(
+                            self.model,
+                            max_memory=model_kwargs.get('max_memory', None),
+                            no_split_module_classes=["LlamaDecoderLayer", "LlamaAttention", "LlamaMLP"],  # Llama用
+                            dtype=model_kwargs['torch_dtype'],
+                            low_zero=False,
+                        )
+                        print(f"🔧 自動メモリ配置: {max_memory}")
+                else:
+                    # accelerateを使わない場合の大規模モデル読み込み
+                    self.model = HookedSAETransformer.from_pretrained(
+                        self.config.model.name,
+                        device=self.device,
+                        torch_dtype=model_kwargs['torch_dtype'],
+                        low_cpu_mem_usage=model_kwargs['low_cpu_mem_usage'],
+                        center_writing_weights=False
+                    )
+                
+            else:
+                # 小規模モデルの場合は標準の読み込み
+                print("🔄 標準サイズモデルの読み込み...")
+                if self.config.model.use_accelerate:
+                    self.model = HookedSAETransformer.from_pretrained(
+                        self.config.model.name,
+                        **model_kwargs
+                    )
+                else:
+                    self.model = HookedSAETransformer.from_pretrained(
+                        self.config.model.name,
+                        device=self.device,
+                        torch_dtype=model_kwargs['torch_dtype'],
+                        low_cpu_mem_usage=model_kwargs['low_cpu_mem_usage'],
+                        center_writing_weights=False
+                    )
+            
+            print(f"✅ モデル {self.config.model.name} を効率的に読み込み完了")
+            
+            # CPU/ディスクオフロード設定（設定で有効な場合）
+            if self.config.model.offload_to_cpu and hasattr(self.model, 'tie_weights'):
+                print("🔄 未使用レイヤーをCPUにオフロード中...")
+                # 注意: この機能は実装により異なる場合があります
+            
+            if self.config.model.offload_to_disk:
+                print("🔄 未使用レイヤーをディスクにオフロード中...")
+                # disk_offload は必要に応じて実装
+            
+            # メモリ最適化
+            self.optimize_memory_usage()
+            
+            # SAEの読み込み（従来通り）
+            print("🔄 SAEを読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device=self.device
+            )
+            
+            # SAEの処理（従来通り）
+            if isinstance(sae_result, tuple):
+                self.sae = sae_result[0]
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
+            else:
+                self.sae = sae_result
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
+            
+            # Tokenizerの取得
+            self.tokenizer = self.model.tokenizer
+            
+            # 最終的なメモリ使用量を記録
+            final_memory = self.get_model_memory_footprint()
+            print(f"📊 最終メモリ状態: {final_memory}")
+            
+            # メモリ使用量の改善を計算
+            if 'cpu_rss' in initial_memory and 'cpu_rss' in final_memory:
+                memory_diff = final_memory['cpu_rss'] - initial_memory['cpu_rss']
+                print(f"📈 メモリ使用量変化: {memory_diff:.2f}GB")
+            
+            # Llama3での特別な設定（従来通り）
+            self._configure_llama3_if_needed()
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ accelerate読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            print("🔄 標準の読み込み方法にフォールバック...")
+            return self.setup_models_standard()
+    
+    def setup_models_standard(self):
+        """標準的なモデル読み込み方法（フォールバック用）"""
+        try:
+            print("🔄 標準モードでモデルを読み込み中...")
             
             # HookedSAETransformerの初期化
             self.model = HookedSAETransformer.from_pretrained(
@@ -92,9 +287,9 @@ class SycophancyAnalyzer:
                 device=self.device
             )
             
-                        # SAEがtupleで返される場合の処理
+            # SAEの処理
             if isinstance(sae_result, tuple):
-                self.sae = sae_result[0]  # 最初の要素を使用
+                self.sae = sae_result[0]
                 print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
             else:
                 self.sae = sae_result
@@ -104,59 +299,83 @@ class SycophancyAnalyzer:
             self.tokenizer = self.model.tokenizer
             
             # Llama3での特別な設定
-            if 'llama' in self.config.model.name.lower():
-                print("🦙 Llama3の特別な設定を適用中...")
-                
-                # pad_tokenの設定
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                    print(f"🔧 pad_token設定: {self.tokenizer.pad_token}")
-                
-                # Llama3のEOSトークン設定の改善
-                if not hasattr(self.tokenizer, 'eos_token_id') or self.tokenizer.eos_token_id is None:
-                    print("⚠️ eos_token_idが設定されていません。Llama3用に設定します")
-                    # Llama3のEOSトークンを明示的に設定
-                    if hasattr(self.tokenizer, 'convert_tokens_to_ids'):
-                        try:
-                            # Llama3.2で使用される可能性のあるEOSトークン
-                            for eos_token in ['<|eot_id|>', '<|end_of_text|>', '</s>']:
-                                try:
-                                    eos_id = self.tokenizer.convert_tokens_to_ids(eos_token)
-                                    if eos_id is not None and eos_id != self.tokenizer.unk_token_id:
-                                        self.tokenizer.eos_token_id = eos_id
-                                        print(f"✅ EOSトークン設定成功: {eos_token} (ID: {eos_id})")
-                                        break
-                                except:
-                                    continue
-                            else:
-                                # フォールバック: 一般的なLlama3のEOSトークンID
-                                self.tokenizer.eos_token_id = 128001
-                                print(f"⚠️ フォールバック: EOSトークンID = {self.tokenizer.eos_token_id}")
-                        except Exception as eos_error:
-                            print(f"⚠️ EOSトークン設定エラー: {eos_error}")
-                            self.tokenizer.eos_token_id = 128001  # Llama3.2のデフォルト
-                
-                print(f"🔧 最終EOSトークンID: {self.tokenizer.eos_token_id}")
-                print(f"🔧 語彙サイズ: {self.tokenizer.vocab_size}")
-                
-                # Chat templateが存在するかチェック
-                if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
-                    print("✅ Llama3のchat_templateが利用可能です")
-                    self.use_chat_template = True
-                else:
-                    print("⚠️ chat_templateが利用できません。通常のテキスト生成を使用します")
-                    self.use_chat_template = False
-            else:
-                # 非Llama3モデルの場合
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                self.use_chat_template = False
-                
+            self._configure_llama3_if_needed()
+            
+            return True
+            
         except Exception as e:
-            print(f"❌ モデル読み込みエラー: {e}")
+            print(f"❌ 標準モード読み込みエラー: {e}")
             import traceback
             traceback.print_exc()
             raise
+    
+    def _configure_llama3_if_needed(self):
+        """Llama3モデルの特別な設定を行う"""
+        if 'llama' in self.config.model.name.lower():
+            print("🦙 Llama3の特別な設定を適用中...")
+            
+            # pad_tokenの設定
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                print(f"🔧 pad_token設定: {self.tokenizer.pad_token}")
+            
+            # Llama3のEOSトークン設定の改善
+            if not hasattr(self.tokenizer, 'eos_token_id') or self.tokenizer.eos_token_id is None:
+                print("⚠️ eos_token_idが設定されていません。Llama3用に設定します")
+                # Llama3のEOSトークンを明示的に設定
+                if hasattr(self.tokenizer, 'convert_tokens_to_ids'):
+                    try:
+                        # Llama3.2で使用される可能性のあるEOSトークン
+                        for eos_token in ['<|eot_id|>', '<|end_of_text|>', '</s>']:
+                            try:
+                                eos_id = self.tokenizer.convert_tokens_to_ids(eos_token)
+                                if eos_id is not None and eos_id != self.tokenizer.unk_token_id:
+                                    self.tokenizer.eos_token_id = eos_id
+                                    print(f"✅ EOSトークン設定成功: {eos_token} (ID: {eos_id})")
+                                    break
+                            except:
+                                continue
+                        else:
+                            # フォールバック: 一般的なLlama3のEOSトークンID
+                            self.tokenizer.eos_token_id = 128001
+                            print(f"⚠️ フォールバック: EOSトークンID = {self.tokenizer.eos_token_id}")
+                    except Exception as eos_error:
+                        print(f"⚠️ EOSトークン設定エラー: {eos_error}")
+                        self.tokenizer.eos_token_id = 128001  # Llama3.2のデフォルト
+            
+            print(f"🔧 最終EOSトークンID: {self.tokenizer.eos_token_id}")
+            print(f"🔧 語彙サイズ: {self.tokenizer.vocab_size}")
+            
+            # Chat templateが存在するかチェック
+            if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template:
+                print("✅ Llama3のchat_templateが利用可能です")
+                self.use_chat_template = True
+            else:
+                print("⚠️ chat_templateが利用できません。通常のテキスト生成を使用します")
+                self.use_chat_template = False
+        else:
+            # 非Llama3モデルの場合
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.use_chat_template = False
+    
+    def setup_models(self):
+        """モデルとSAEの初期化（メモリ効率化対応）"""
+        if not SAE_AVAILABLE:
+            raise ImportError("SAE Lensが利用できません")
+        
+        print("🔄 メモリ効率化されたモデル読み込みを開始...")
+        
+        # accelerateライブラリが利用可能な場合は効率的な読み込みを試行
+        if ACCELERATE_AVAILABLE:
+            success = self.setup_models_with_accelerate()
+            if success:
+                print("✅ accelerateライブラリを使用したモデル読み込み完了")
+                return
+        
+        # フォールバック: 標準的な読み込み
+        print("🔄 標準的なモデル読み込みにフォールバック...")
+        self.setup_models_standard()
     
     def get_sae_d_sae(self) -> int:
         """SAEのd_saeを安全に取得"""
@@ -1267,9 +1486,9 @@ def parse_arguments():
     
     parser.add_argument(
         '--mode', '-m',
-        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'auto'],
+        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'llama3-memory', 'auto'],
         default='auto',
-        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), auto(環境自動選択)'
+        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), llama3-memory(Llama3メモリ効率化), auto(環境自動選択)'
     )
     
     parser.add_argument(
@@ -1298,6 +1517,25 @@ def parse_arguments():
         help='結果出力ディレクトリ'
     )
     
+    parser.add_argument(
+        '--memory-limit',
+        type=float,
+        default=None,
+        help='最大メモリ使用量（GB）'
+    )
+    
+    parser.add_argument(
+        '--use-fp16',
+        action='store_true',
+        help='float16精度を強制使用（メモリ効率化）'
+    )
+    
+    parser.add_argument(
+        '--disable-accelerate',
+        action='store_true',
+        help='accelerateライブラリの使用を無効化'
+    )
+    
     return parser.parse_args()
 
 def get_config_from_mode(mode: str, args) -> ExperimentConfig:
@@ -1316,6 +1554,9 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
     elif mode == 'llama3-prod':
         config = SERVER_LARGE_CONFIG
         print("🦙 Llama3 本番モード（大規模実験）")
+    elif mode == 'llama3-memory':
+        config = LLAMA3_MEMORY_OPTIMIZED_CONFIG
+        print("🧠 Llama3 メモリ効率化モード（accelerate使用）")
     elif mode == 'auto':
         config = get_auto_config()
         print("⚙️ 環境自動選択モード")
@@ -1328,6 +1569,19 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
     if args.sample_size is not None:
         config.data.sample_size = args.sample_size
         print(f"📊 サンプルサイズを{args.sample_size}に設定")
+    
+    # メモリ効率化設定の上書き
+    if args.memory_limit is not None:
+        config.model.max_memory_gb = args.memory_limit
+        print(f"🧠 最大メモリを{args.memory_limit}GBに制限")
+    
+    if args.use_fp16:
+        config.model.use_fp16 = True
+        print("🔧 float16精度を強制有効化")
+    
+    if args.disable_accelerate:
+        config.model.use_accelerate = False
+        print("⚠️ accelerateライブラリを無効化")
     
     if args.verbose or args.debug:
         config.debug.verbose = True

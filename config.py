@@ -16,6 +16,15 @@ class ModelConfig:
     sae_id: str = "blocks.5.hook_resid_pre"  # SAE ID（block 5を使用）
     device: str = "auto"  # デバイス設定 ("auto", "cpu", "cuda", "mps")
     
+    # メモリ効率化設定
+    use_accelerate: bool = True      # accelerateライブラリを使用するか
+    use_fp16: bool = True           # float16精度を使用するか（メモリ節約）
+    low_cpu_mem_usage: bool = True  # CPU使用量を削減するか
+    device_map: str = "auto"        # デバイス自動配置（"auto", "sequential", "balanced"）
+    max_memory_gb: Optional[float] = None  # 最大メモリ使用量（GB）
+    offload_to_cpu: bool = False    # 使用していない層をCPUにオフロードするか
+    offload_to_disk: bool = False   # 使用していない層をディスクにオフロードするか
+    
 @dataclass
 class GenerationConfig:
     """テキスト生成関連の設定"""
@@ -298,6 +307,32 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+)
+
+# Llama3メモリ効率化設定（大規模モデル用）
+LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="meta-llama/Llama-3.2-3B",
+        sae_release="seonglae/Llama-3.2-3B-sae",
+        sae_id="Llama-3.2-3B_blocks.12.hook_resid_pre_14336_topk_48_0.0002_42_faithful-llama3.2-3b_512", 
+        device="auto",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto",       # 自動デバイス配置
+        max_memory_gb=12.0,      # 最大12GBに制限
+        offload_to_cpu=True,     # 未使用層をCPUに
+        offload_to_disk=False    # ディスクオフロードは無効
+    ),
+    data=DataConfig(sample_size=20),  # 軽量テスト
+    generation=GenerationConfig(
+        max_new_tokens=15,       # トークン数を制限
+        temperature=0.3,         # 低温度で安定性重視
+        do_sample=True,
+        top_p=0.9
+    ),
+    analysis=AnalysisConfig(top_k_features=20),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
 )
 
 # サーバー環境用中規模設定
