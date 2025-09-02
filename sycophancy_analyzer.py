@@ -7,6 +7,7 @@
 2. 設定の一元管理
 3. エラーハンドリングの強化
 4. 詳細な分析結果の可視化
+5. メモリ効率化
 """
 
 import os
@@ -24,6 +25,12 @@ from collections import Counter
 import warnings
 import argparse
 import sys
+import gc
+
+# メモリ効率化のための環境変数設定
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # トークナイザーの並列化を無効にしてメモリ節約
+
 warnings.filterwarnings('ignore')
 
 # SAE Lens関連のインポート
@@ -39,7 +46,8 @@ except ImportError:
 try:
     from accelerate import init_empty_weights, load_checkpoint_and_dispatch, disk_offload
     from accelerate.utils import get_balanced_memory
-    from accelerate import PartialState
+    from accelerate import PartialState, dispatch_model
+    from transformers import AutoConfig
     ACCELERATE_AVAILABLE = True
 except ImportError:
     print("警告: accelerateライブラリが利用できません。pip install accelerate でインストールを推奨します")
@@ -87,18 +95,45 @@ class SycophancyAnalyzer:
     def optimize_memory_usage(self):
         """メモリ使用量を最適化"""
         try:
+            import gc
+            
             # ガベージコレクションの実行
             gc.collect()
             
             # CUDAキャッシュのクリア（GPU使用時）
-            if torch.cuda.is_available() and self.device.startswith('cuda'):
+            if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                # さらに強力なキャッシュクリア
+                if hasattr(torch.cuda, 'ipc_collect'):
+                    torch.cuda.ipc_collect()
                 print("🧹 CUDAキャッシュをクリアしました")
+                
+                # 現在のメモリ使用量を表示
+                allocated = torch.cuda.memory_allocated(0) / 1e9
+                reserved = torch.cuda.memory_reserved(0) / 1e9
+                print(f"📊 GPU使用中メモリ: {allocated:.2f}GB / 予約済み: {reserved:.2f}GB")
             
             # MPSキャッシュのクリア（Mac使用時）
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() and self.device == 'mps':
-                # MPSの場合、明示的なキャッシュクリアはないが、メモリ使用量を確認
-                print("🧹 MPSメモリ使用量を最適化しました")
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+                    print("🧹 MPSキャッシュをクリアしました")
+            
+            # Python レベルでの未使用オブジェクトの削除
+            for obj_name in ['model', 'sae', 'tokenizer']:
+                if hasattr(self, obj_name):
+                    obj = getattr(self, obj_name)
+                    if obj is not None:
+                        del obj
+                        setattr(self, obj_name, None)
+            
+            # より強力なガベージコレクション
+            for i in range(3):
+                collected = gc.collect()
+                if collected == 0:
+                    break
+            
+            print(f"🧹 メモリ最適化完了 (回収オブジェクト数: {collected})")
             
         except Exception as e:
             print(f"⚠️ メモリ最適化エラー: {e}")
@@ -108,19 +143,27 @@ class SycophancyAnalyzer:
         memory_info = {}
         
         try:
-            if torch.cuda.is_available() and self.device.startswith('cuda'):
+            if torch.cuda.is_available():
                 memory_info['gpu_allocated'] = torch.cuda.memory_allocated(0) / 1e9  # GB
                 memory_info['gpu_reserved'] = torch.cuda.memory_reserved(0) / 1e9   # GB
                 memory_info['gpu_max'] = torch.cuda.max_memory_allocated(0) / 1e9   # GB
+                memory_info['gpu_total'] = torch.cuda.get_device_properties(0).total_memory / 1e9
+                memory_info['gpu_free'] = memory_info['gpu_total'] - memory_info['gpu_allocated']
             
             # プロセス全体のメモリ使用量
-            import psutil
-            process = psutil.Process()
-            memory_info['cpu_rss'] = process.memory_info().rss / 1e9  # GB
-            memory_info['cpu_vms'] = process.memory_info().vms / 1e9  # GB
-            
+            try:
+                import psutil
+                process = psutil.Process()
+                memory_info['cpu_rss'] = process.memory_info().rss / 1e9  # GB
+                memory_info['cpu_vms'] = process.memory_info().vms / 1e9  # GB
+                memory_info['cpu_percent'] = process.memory_percent()
+            except ImportError:
+                # psutilが利用できない場合のフォールバック
+                import resource
+                memory_info['cpu_max_rss'] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6  # GB (Linux)
+        
         except Exception as e:
-            print(f"⚠️ メモリ情報取得エラー: {e}")
+            memory_info['error'] = str(e)
         
         return memory_info
     
@@ -131,89 +174,101 @@ class SycophancyAnalyzer:
             return self.setup_models_standard()
         
         try:
-            print("🚀 accelerateライブラリを使用した効率的なモデル読み込みを開始...")
+            print("🚀 メモリ効率的なモデル読み込みを開始...")
             
-            # メモリ使用量の初期状態を記録
+            # メモリクリア
+            self.optimize_memory_usage()
             initial_memory = self.get_model_memory_footprint()
             print(f"📊 初期メモリ状態: {initial_memory}")
             
-            # 分散環境の初期化（シングルGPU/CPU環境でも有効）
-            distributed_state = PartialState()
-            
-            # 設定に基づくモデル読み込み設定
-            model_kwargs = {
-                'device_map': self.config.model.device_map if self.config.model.use_accelerate else None,
-                'low_cpu_mem_usage': self.config.model.low_cpu_mem_usage,
-                'center_writing_weights': False
-            }
-            
-            # float16精度の設定（CPU以外で使用）
-            if self.config.model.use_fp16 and self.device != 'cpu':
-                model_kwargs['torch_dtype'] = torch.float16
-                print("🔧 float16精度を使用します（メモリ効率化）")
+            # GPUメモリ確認
+            if torch.cuda.is_available():
+                total_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+                print(f"🔧 GPU総メモリ: {total_memory:.2f}GB")
+                # 利用可能メモリの70%を上限とする
+                safe_memory = min(total_memory * 0.7, 8.0)
             else:
-                model_kwargs['torch_dtype'] = torch.float32
+                safe_memory = 8.0
             
-            # 最大メモリ設定
-            if self.config.model.max_memory_gb and torch.cuda.is_available():
-                max_memory = {0: f"{self.config.model.max_memory_gb}GB"}
-                model_kwargs['max_memory'] = max_memory
-                print(f"🔧 最大メモリ制限: {self.config.model.max_memory_gb}GB")
+            print(f"🔧 安全メモリ制限: {safe_memory:.2f}GB")
             
-            # 大規模モデルの場合、空のウェイトで初期化
-            if 'llama' in self.config.model.name.lower() or 'large' in self.config.model.name.lower():
-                print("🔄 大規模モデル用の空ウェイト初期化...")
+            # 超シンプルなモデル読み込み設定
+            print("🔄 CPUで軽量読み込み中...")
+            
+            # まずCPUで読み込み
+            self.model = HookedSAETransformer.from_pretrained(
+                self.config.model.name,
+                device_map="cpu",  # 強制的にCPU
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                center_writing_weights=False,
+            )
+            
+            print("✅ CPUでの読み込み完了")
+            
+            # 使用可能なデバイスに応じて移動
+            if torch.cuda.is_available() and safe_memory > 4.0:
+                print("🔄 GPUに部分的に移動中...")
+                # エンベディング層のみGPUに移動（メモリ節約）
+                if hasattr(self.model, 'embed'):
+                    self.model.embed = self.model.embed.to('cuda:0')
+                # 出力層もGPUに
+                if hasattr(self.model, 'unembed'):
+                    self.model.unembed = self.model.unembed.to('cuda:0')
                 
-                if self.config.model.use_accelerate:
-                    with init_empty_weights():
-                        # 空のウェイトでモデル構造のみを初期化
-                        self.model = HookedSAETransformer.from_pretrained(
-                            self.config.model.name,
-                            **model_kwargs
-                        )
-                    
-                    print("✅ 空ウェイトでのモデル構造初期化完了")
-                    
-                    # 利用可能なメモリに基づいてデバイス配置を決定
-                    if torch.cuda.is_available() and self.config.model.device_map == "auto":
-                        max_memory = get_balanced_memory(
-                            self.model,
-                            max_memory=model_kwargs.get('max_memory', None),
-                            no_split_module_classes=["LlamaDecoderLayer", "LlamaAttention", "LlamaMLP"],  # Llama用
-                            dtype=model_kwargs['torch_dtype'],
-                            low_zero=False,
-                        )
-                        print(f"🔧 自動メモリ配置: {max_memory}")
-                else:
-                    # accelerateを使わない場合の大規模モデル読み込み
-                    self.model = HookedSAETransformer.from_pretrained(
-                        self.config.model.name,
-                        device=self.device,
-                        torch_dtype=model_kwargs['torch_dtype'],
-                        low_cpu_mem_usage=model_kwargs['low_cpu_mem_usage'],
-                        center_writing_weights=False
-                    )
+                # 一部のレイヤーのみGPUに（メモリに応じて調整）
+                if hasattr(self.model, 'blocks'):
+                    max_blocks_on_gpu = min(8, len(self.model.blocks))  # 最大8層まで
+                    for i in range(max_blocks_on_gpu):
+                        self.model.blocks[i] = self.model.blocks[i].to('cuda:0')
+                        # メモリ使用量をチェック
+                        if torch.cuda.memory_allocated(0) / 1e9 > safe_memory:
+                            print(f"⚠️ メモリ制限に達したため、{i}層までGPUに配置")
+                            break
                 
+                print(f"✅ ハイブリッド配置完了 (GPU使用メモリ: {torch.cuda.memory_allocated(0)/1e9:.2f}GB)")
             else:
-                # 小規模モデルの場合は標準の読み込み
-                print("🔄 標準サイズモデルの読み込み...")
-                if self.config.model.use_accelerate:
-                    self.model = HookedSAETransformer.from_pretrained(
-                        self.config.model.name,
-                        **model_kwargs
-                    )
-                else:
-                    self.model = HookedSAETransformer.from_pretrained(
-                        self.config.model.name,
-                        device=self.device,
-                        torch_dtype=model_kwargs['torch_dtype'],
-                        low_cpu_mem_usage=model_kwargs['low_cpu_mem_usage'],
-                        center_writing_weights=False
-                    )
+                print("🔧 CPUモードで継続")
             
-            print(f"✅ モデル {self.config.model.name} を効率的に読み込み完了")
+            # SAEの読み込み（軽量設定）
+            print("🔄 SAEを読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device='cpu'  # SAEはCPUで読み込み
+            )
             
-            # CPU/ディスクオフロード設定（設定で有効な場合）
+            if isinstance(sae_result, tuple):
+                self.sae = sae_result[0]
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
+            else:
+                self.sae = sae_result
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
+            
+            # SAEもGPUに移動可能であれば移動
+            if torch.cuda.is_available() and torch.cuda.memory_allocated(0) / 1e9 < safe_memory * 0.9:
+                try:
+                    self.sae = self.sae.to('cuda:0')
+                    print("✅ SAEもGPUに配置")
+                except:
+                    print("⚠️ SAEはCPUに維持")
+            
+            # Tokenizerの取得
+            self.tokenizer = self.model.tokenizer
+            
+            # 最終メモリ状態
+            final_memory = self.get_model_memory_footprint()
+            print(f"📊 最終メモリ状態: {final_memory}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ accelerate読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            print("🔄 標準の読み込み方法にフォールバック...")
+            return self.setup_models_standard()
             if self.config.model.offload_to_cpu and hasattr(self.model, 'tie_weights'):
                 print("🔄 未使用レイヤーをCPUにオフロード中...")
                 # 注意: この機能は実装により異なる場合があります
@@ -266,25 +321,52 @@ class SycophancyAnalyzer:
             return self.setup_models_standard()
     
     def setup_models_standard(self):
-        """標準的なモデル読み込み方法（フォールバック用）"""
+        """標準的なモデル読み込み方法（メモリ効率重視）"""
         try:
-            print("🔄 標準モードでモデルを読み込み中...")
+            print("🔄 メモリ効率重視でモデルを読み込み中...")
             
-            # HookedSAETransformerの初期化
+            # メモリクリア
+            self.optimize_memory_usage()
+            
+            # CPUモードで強制読み込み（メモリ制限対策）
+            print("🔄 CPUで軽量読み込み...")
+            
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
-                device=self.device,
-                center_writing_weights=False
+                device="cpu",  # 強制的にCPU
+                torch_dtype=torch.float16,  # メモリ節約
+                low_cpu_mem_usage=True,
+                center_writing_weights=False,
+                trust_remote_code=True,
             )
             
-            print(f"✅ モデル {self.config.model.name} を読み込み完了")
+            print(f"✅ モデル {self.config.model.name} をCPUで読み込み完了")
             
-            # SAEの読み込み
-            print("🔄 SAEを読み込み中...")
+            # GPUが利用可能で十分なメモリがある場合のみ移動
+            if torch.cuda.is_available():
+                available_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+                print(f"🔧 利用可能GPUメモリ: {available_memory:.2f}GB")
+                
+                if available_memory > 6.0:  # 6GB以上の場合のみGPU使用を試行
+                    try:
+                        print("🔄 GPUへの部分移動を試行...")
+                        # エンベディング層のみGPUに移動
+                        if hasattr(self.model, 'embed'):
+                            self.model.embed = self.model.embed.to('cuda:0')
+                        print("✅ 一部レイヤーをGPUに移動")
+                    except Exception as gpu_error:
+                        print(f"⚠️ GPU移動失敗、CPUモードで継続: {gpu_error}")
+                        # エラーが発生した場合はCPUに戻す
+                        self.model = self.model.to('cpu')
+                else:
+                    print("🔧 GPUメモリ不足のためCPUモードで継続")
+            
+            # SAEの読み込み（軽量設定）
+            print("🔄 SAEを軽量モードで読み込み中...")
             sae_result = SAE.from_pretrained(
                 release=self.config.model.sae_release,
                 sae_id=self.config.model.sae_id,
-                device=self.device
+                device="cpu"  # SAEもCPUで安全に読み込み
             )
             
             # SAEの処理
@@ -300,6 +382,10 @@ class SycophancyAnalyzer:
             
             # Llama3での特別な設定
             self._configure_llama3_if_needed()
+            
+            # 最終メモリ状態
+            final_memory = self.get_model_memory_footprint()
+            print(f"📊 最終メモリ状態: {final_memory}")
             
             return True
             
