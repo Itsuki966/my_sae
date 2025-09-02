@@ -248,37 +248,49 @@ class ExperimentConfig:
 # デフォルト設定のインスタンス
 DEFAULT_CONFIG = ExperimentConfig()
 
-# Mac環境用軽量設定
+# Mac環境用軽量設定（メモリ節約強化）
 MAC_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gpt2",
         sae_release="gpt2-small-res-jb", 
         sae_id="blocks.5.hook_resid_pre",
-        device="auto"  # 自動でmps/cpuを選択
+        device="auto",  # 自動でmps/cpuを選択
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
     generation=GenerationConfig(max_new_tokens=5, temperature=0.0),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
-# よく使用される軽量設定
+# よく使用される軽量設定（メモリ節約強化）
 LIGHTWEIGHT_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gpt2",
         sae_release="gpt2-small-res-jb", 
-        sae_id="blocks.5.hook_resid_pre"
+        sae_id="blocks.5.hook_resid_pre",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
     generation=GenerationConfig(max_new_tokens=10, temperature=0.1),  # トークン数を増やし、温度を上げる
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
-# テスト用設定（より詳細なデバッグ出力）
+# テスト用設定（より詳細なデバッグ出力 + メモリ節約）
 TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gpt2",
         sae_release="gpt2-small-res-jb", 
-        sae_id="blocks.5.hook_resid_pre"
+        sae_id="blocks.5.hook_resid_pre",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
@@ -335,26 +347,36 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
 )
 
-# サーバー環境用中規模設定
+# サーバー環境用中規模設定（メモリ節約強化）
 SERVER_MEDIUM_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gpt2-medium",
         sae_release="gpt2-medium-res-jb",
         sae_id="blocks.5.hook_resid_pre",
-        device="auto"
+        device="auto",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=200),
     generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
-# サーバー環境用大規模設定（Llama3対応）
+# サーバー環境用大規模設定（Llama3対応 + メモリ節約強化）
 SERVER_LARGE_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
         sae_release="seonglae/Llama-3.2-3B-sae",
         sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
-        device="auto"
+        device="auto",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto",       # 自動デバイス配置
+        max_memory_gb=16.0,      # 最大16GBに制限
+        offload_to_cpu=True      # 未使用層をCPUにオフロード
     ),
     data=DataConfig(sample_size=1000),
     generation=GenerationConfig(
@@ -367,8 +389,14 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
-# 包括的な設定
+# 包括的な設定（メモリ節約対応）
 COMPREHENSIVE_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
+    ),
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
     generation=GenerationConfig(max_new_tokens=10, temperature=0.2)
