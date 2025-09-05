@@ -469,12 +469,16 @@ class SycophancyAnalyzer:
                             except:
                                 continue
                         else:
-                            # フォールバック: 一般的なLlama3のEOSトークンID
-                            self.tokenizer.eos_token_id = 128001
-                            print(f"⚠️ フォールバック: EOSトークンID = {self.tokenizer.eos_token_id}")
+                            # Llama3の標準的なEOSトークンIDを設定
+                            standard_llama3_eos = 128001
+                            self.tokenizer.eos_token_id = standard_llama3_eos
+                            print(f"ℹ️ Llama3標準EOSトークンIDを設定: {self.tokenizer.eos_token_id}")
                     except Exception as eos_error:
                         print(f"⚠️ EOSトークン設定エラー: {eos_error}")
-                        self.tokenizer.eos_token_id = 128001  # Llama3.2のデフォルト
+                        # Llama3.2の標準的なEOSトークンID
+                        standard_llama3_eos = 128001
+                        self.tokenizer.eos_token_id = standard_llama3_eos
+                        print(f"ℹ️ Llama3.2標準EOSトークンIDを使用: {self.tokenizer.eos_token_id}")
             
             print(f"🔧 最終EOSトークンID: {self.tokenizer.eos_token_id}")
             print(f"🔧 語彙サイズ: {self.tokenizer.vocab_size}")
@@ -511,15 +515,25 @@ class SycophancyAnalyzer:
         self.setup_models_standard()
     
     def get_sae_d_sae(self) -> int:
-        """SAEのd_saeを安全に取得"""
+        """
+        SAEのd_saeを安全に取得
+        
+        Raises:
+            RuntimeError: SAEの次元数が取得できない場合
+        """
         if hasattr(self.sae, 'cfg') and hasattr(self.sae.cfg, 'd_sae'):
             return self.sae.cfg.d_sae
         elif hasattr(self.sae, 'd_sae'):
             return self.sae.d_sae
         else:
-            # デフォルト値として適当な値を返す（後でエラーになる前に警告）
-            print("⚠️ SAEのd_sae属性が見つかりません。デフォルト値16384を使用します。")
-            return 16384
+            # SAEの次元数が取得できない場合は明確にエラーを発生させる
+            error_msg = (
+                "SAEの次元数（d_sae）を取得できませんでした。"
+                "SAEモデルが正しく読み込まれていない可能性があります。"
+                f"利用可能な属性: {list(vars(self.sae).keys()) if self.sae else 'SAE is None'}"
+            )
+            print(f"❌ エラー: {error_msg}")
+            raise RuntimeError(error_msg)
     
     def load_dataset(self, file_path: str = None) -> List[Dict[str, Any]]:
         """
@@ -599,14 +613,11 @@ class SycophancyAnalyzer:
                 
             return choice_letters, choice_range
         else:
-            # デフォルト値（A-Eを想定）
-            default_letters = ['A', 'B', 'C', 'D', 'E']
-            default_range = "A, B, C, D, or E"
-            
-            if self.config.debug.verbose:
-                print("⚠️ 選択肢パターンが見つかりません。デフォルト値を使用")
-                
-            return default_letters, default_range
+            # 選択肢パターンが見つからない場合は分析をスキップ
+            error_msg = f"選択肢パターンが見つかりません。入力: {answers[:100]}..."
+            print(f"❌ エラー: {error_msg}")
+            print("ℹ️ 分析をスキップします。選択肢の形式を確認してください。")
+            raise ValueError(error_msg)
     
     def extract_answer_letter(self, response: str, valid_choices: List[str] = None) -> Optional[str]:
         """
@@ -621,6 +632,15 @@ class SycophancyAnalyzer:
         """
         if not response:
             return None
+        
+        # 緊急フォールバック応答の検出
+        if response.startswith("EMERGENCY_FALLBACK_"):
+            # 緊急フォールバック応答からの文字抽出
+            emergency_choice = response.replace("EMERGENCY_FALLBACK_", "")
+            if self.config.debug.verbose:
+                print(f"⚠️ 緊急フォールバック応答を検出: {emergency_choice}")
+                print("ℹ️ この応答は統計から除外されるべきです")
+            return emergency_choice  # 文字を返すが、マーキングは保持
             
         # デフォルトの有効な選択肢
         if valid_choices is None:
@@ -1004,14 +1024,22 @@ class SycophancyAnalyzer:
         return response
     
     def _emergency_fallback_response(self) -> str:
-        """緊急時のフォールバック応答（基本的な選択肢を返す）"""
-        if self.config.debug.verbose:
-            print("🚨 緊急フォールバック: 基本的な選択肢を返します")
+        """
+        緊急時のフォールバック応答
         
-        # 基本的な選択肢をランダムに選択（A、B、C、D、E）
+        注意: この応答は分析結果の信頼性を損なうため、
+        統計計算時に除外される必要があります。
+        """
+        if self.config.debug.verbose:
+            print("🚨 緊急フォールバック: モデル生成が完全に失敗しました")
+            print("⚠️ この応答は分析から除外されるべきです")
+        
+        # 緊急時の標識付き応答（後で識別可能）
+        # "EMERGENCY_FALLBACK_" プレフィックスで識別
         import random
         choices = ['A', 'B', 'C', 'D', 'E']
-        return random.choice(choices)
+        emergency_choice = random.choice(choices)
+        return f"EMERGENCY_FALLBACK_{emergency_choice}"
     
     def _should_stop_generation(self, current_text: str) -> bool:
         """早期終了条件をチェック（改善版）"""
@@ -1078,16 +1106,6 @@ class SycophancyAnalyzer:
             print(f"✅ 後処理完了: '{response}'")
         
         return response
-    
-    def _emergency_fallback_response(self) -> str:
-        """緊急時のフォールバック応答（基本的な選択肢を返す）"""
-        if self.config.debug.verbose:
-            print("🚨 緊急フォールバック: 基本的な選択肢を返します")
-        
-        # 基本的な選択肢をランダムに選択（A、B、C、D、E）
-        import random
-        choices = ['A', 'B', 'C', 'D', 'E']
-        return random.choice(choices)
     
     def get_sae_activations(self, text: str) -> torch.Tensor:
         """
@@ -1207,9 +1225,14 @@ class SycophancyAnalyzer:
             else:
                 # デバッグ: 利用可能なキーを表示
                 print(f"🔍 デバッグ: item['base']のキー: {list(item['base'].keys())}")
-                # answersキーがない場合のデフォルト処理
-                answers = "A) Option A\nB) Option B\nC) Option C\nD) Option D"
-                print(f"⚠️ 'answers'キーが見つかりません。デフォルト選択肢を使用します。")
+                # answersキーがない場合は分析をスキップ
+                error_msg = (
+                    f"質問ID {item.get('id', 'unknown')} に選択肢データが含まれていません。"
+                    f"利用可能なキー: {list(item['base'].keys())}"
+                )
+                print(f"❌ エラー: {error_msg}")
+                print("ℹ️ 分析をスキップします。選択肢データは分析に必須です。")
+                return None
             
             # correct_letterの安全な取得
             if 'correct_letter' in item['base']:
@@ -1219,11 +1242,17 @@ class SycophancyAnalyzer:
             elif 'answer' in item['base']:
                 correct_letter = item['base']['answer']
             else:
-                correct_letter = 'A'  # デフォルト値
-                print(f"⚠️ 正解情報が見つかりません。デフォルト値'A'を使用します。")
+                # 正解データがない場合は分析をスキップ
+                error_msg = (
+                    f"質問ID {item.get('id', 'unknown')} に正解データが含まれていません。"
+                    f"利用可能なキー: {list(item['base'].keys())}"
+                )
+                print(f"❌ エラー: {error_msg}")
+                print("ℹ️ 分析をスキップします。正確な分析には正解データが必要です。")
+                return None
                 
-        except KeyError as e:
-            print(f"⚠️ データ構造エラー (スキップ): {e}")
+        except (KeyError, ValueError) as e:
+            print(f"⚠️ データ構造エラー または 選択肢形式エラー (スキップ): {e}")
             return None
         
         try:
@@ -1398,22 +1427,49 @@ class SycophancyAnalyzer:
         
         print("📊 結果分析中...")
         
-        # 基本統計
-        total_samples = len(self.results)
-        sycophantic_cases = sum(1 for r in self.results if r['is_sycophantic'])
+        # 緊急フォールバック応答を除外したフィルタリング
+        valid_results = []
+        emergency_fallback_count = 0
+        
+        for r in self.results:
+            # 緊急フォールバック応答かどうかをチェック
+            is_emergency = (
+                (r.get('initial_answer') and r['initial_answer'].startswith('EMERGENCY_FALLBACK_')) or
+                (r.get('challenge_answer') and r['challenge_answer'].startswith('EMERGENCY_FALLBACK_'))
+            )
+            
+            if is_emergency:
+                emergency_fallback_count += 1
+                if self.config.debug.verbose:
+                    print(f"⚠️ 緊急フォールバック応答を統計から除外: ID {r.get('id', 'unknown')}")
+            else:
+                valid_results.append(r)
+        
+        if emergency_fallback_count > 0:
+            print(f"ℹ️ 緊急フォールバック応答 {emergency_fallback_count} 件を統計計算から除外しました")
+        
+        # 有効な結果のみで統計計算
+        if not valid_results:
+            print("❌ 有効な分析結果がありません（すべて緊急フォールバック）")
+            return {}
+        
+        # 基本統計（有効な結果のみ）
+        total_samples = len(valid_results)
+        original_total = len(self.results)
+        sycophantic_cases = sum(1 for r in valid_results if r['is_sycophantic'])
         sycophancy_rate = sycophantic_cases / total_samples if total_samples > 0 else 0
         
-        # 正確性統計
-        initial_accuracy = sum(1 for r in self.results if r['initial_correct']) / total_samples
-        challenge_accuracy = sum(1 for r in self.results if r['challenge_correct']) / total_samples
+        # 正確性統計（有効な結果のみ）
+        initial_accuracy = sum(1 for r in valid_results if r['initial_correct']) / total_samples
+        challenge_accuracy = sum(1 for r in valid_results if r['challenge_correct']) / total_samples
         
-        # 抽出失敗率
-        initial_extraction_failures = sum(1 for r in self.results if r['initial_answer'] is None)
-        challenge_extraction_failures = sum(1 for r in self.results if r['challenge_answer'] is None)
+        # 抽出失敗率（有効な結果のみ）
+        initial_extraction_failures = sum(1 for r in valid_results if r['initial_answer'] is None)
+        challenge_extraction_failures = sum(1 for r in valid_results if r['challenge_answer'] is None)
         
-        # SAE特徴分析
-        sycophantic_results = [r for r in self.results if r['is_sycophantic']]
-        non_sycophantic_results = [r for r in self.results if not r['is_sycophantic']]
+        # SAE特徴分析（有効な結果のみ）
+        sycophantic_results = [r for r in valid_results if r['is_sycophantic']]
+        non_sycophantic_results = [r for r in valid_results if not r['is_sycophantic']]
         
         # 特徴の重要度分析
         if sycophantic_results:
@@ -1431,6 +1487,8 @@ class SycophancyAnalyzer:
         
         analysis_summary = {
             'total_samples': total_samples,
+            'original_total_samples': original_total,
+            'emergency_fallback_count': emergency_fallback_count,
             'sycophantic_cases': sycophantic_cases,
             'sycophancy_rate': sycophancy_rate,
             'initial_accuracy': initial_accuracy,
@@ -1446,7 +1504,9 @@ class SycophancyAnalyzer:
         self.analysis_results = analysis_summary
         
         print(f"📈 分析サマリー:")
-        print(f"  総サンプル数: {total_samples}")
+        print(f"  総サンプル数: {total_samples} (元の総数: {original_total})")
+        if emergency_fallback_count > 0:
+            print(f"  除外された緊急フォールバック: {emergency_fallback_count}")
         print(f"  迎合ケース: {sycophantic_cases} ({sycophancy_rate:.1%})")
         print(f"  初回正答率: {initial_accuracy:.1%}")
         print(f"  挑戦後正答率: {challenge_accuracy:.1%}")
@@ -1860,6 +1920,9 @@ def main():
         
         # サマリーが空でないかチェック
         if summary and 'sycophancy_rate' in summary:
+            print(f"  総サンプル数: {summary['total_samples']} (元の総数: {summary.get('original_total_samples', summary['total_samples'])})")
+            if summary.get('emergency_fallback_count', 0) > 0:
+                print(f"  除外された緊急フォールバック: {summary['emergency_fallback_count']}")
             print(f"  迎合率: {summary['sycophancy_rate']:.1%}")
             print(f"  初回正答率: {summary['initial_accuracy']:.1%}")
             print(f"  挑戦後正答率: {summary['challenge_accuracy']:.1%}")
