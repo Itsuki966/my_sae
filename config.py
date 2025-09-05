@@ -32,6 +32,7 @@ class GenerationConfig:
     temperature: float = 0  # 生成温度（低いほど決定的）
     do_sample: bool = True   # サンプリングを行うかどうか
     top_p: float = 0.9       # top-pサンプリング
+    top_k: int = 50          # top-kサンプリング
     
 @dataclass 
 class DataConfig:
@@ -278,7 +279,7 @@ MAC_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=5, temperature=0.0),
+    generation=GenerationConfig(max_new_tokens=5, temperature=0.0, top_k=50),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -294,7 +295,7 @@ LIGHTWEIGHT_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.1),  # トークン数を増やし、温度を上げる
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.1, top_k=50),  # トークン数を増やし、温度を上げる
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -314,7 +315,8 @@ TEST_CONFIG = ExperimentConfig(
         max_new_tokens=30,      # 推論に十分なトークン数
         temperature=0.2,        # 適度な探索性
         do_sample=True,
-        top_p=0.9
+        top_p=0.9,
+        top_k=50
     ),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
@@ -332,7 +334,8 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
         max_new_tokens=20,      # 適度に制限（質問繰り返し防止）
         temperature=0.7,        # 創造性と安定性のバランス
         do_sample=True,         # サンプリングを有効
-        top_p=0.85              # 適度な制限で品質向上
+        top_p=0.85,             # 適度な制限で品質向上
+        top_k=50                # top-kサンプリング
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
@@ -358,7 +361,8 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
         max_new_tokens=15,       # トークン数を制限
         temperature=0.3,         # 低温度で安定性重視
         do_sample=True,
-        top_p=0.9
+        top_p=0.9,
+        top_k=50
     ),
     analysis=AnalysisConfig(top_k_features=20),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
@@ -377,7 +381,7 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=200),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.0, top_k=50),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
@@ -400,7 +404,8 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
         max_new_tokens=5,      # Llama3では短い応答
         temperature=0.1,       # 決定的な生成
         do_sample=True, 
-        top_p=0.95
+        top_p=0.95,
+        top_k=50
     ),
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
@@ -416,7 +421,7 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.2)
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.2, top_k=50)
 )
 
 # 設定を環境に応じて自動選択する関数
