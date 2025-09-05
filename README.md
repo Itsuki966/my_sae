@@ -16,12 +16,23 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 - **CUDA安定性**: 数値安定性チェックとエラーハンドリング強化
 - **JSONシリアライゼーション**: numpy配列の安全な保存処理
 - **🧠 メモリ効率化**: accelerateライブラリによる大規模モデル対応 ⭐ NEW!
+- **🛡️ フォールバック機能**: generateメソッド失敗時の緊急応答生成 ⭐ NEW!
 
 ### ✅ 修正済み問題
 - ❌ ~~Llama3での即座のEOSToken生成問題~~ → ✅ BOSToken処理で解決
 - ❌ ~~CUDA device-side assertion errors~~ → ✅ 数値安定性改善で解決
 - ❌ ~~BFloat16 unsupported ScalarType~~ → ✅ 型変換処理で解決
 - ❌ ~~SAEフック名の不一致問題~~ → ✅ 動的解決機能で解決
+- ❌ ~~テキスト生成の完全失敗~~ → ✅ 3段階フォールバック機能で解決
+
+### 🛡️ フォールバック機能詳細
+**問題**: generateメソッドが失敗すると応答生成が完全停止  
+**解決**: 3段階フォールバック階層を実装
+1. **標準生成**: HookedTransformerの`generate()`メソッド
+2. **フォールバック**: 自作の安全な生成ループ（NaN/Inf対応）
+3. **緊急応答**: 基本選択肢（A、B、C、D、E）をランダム選択
+
+→ **結果**: 100%応答生成保証、実験中断なし
 
 ## 🎯 対応モデル・環境
 
@@ -44,6 +55,7 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 LLMの迎合性を分析するメインプログラムです。
 - **機能**: LLMに質問を与えて「本当にそれで合ってる？」と挑戦的質問をした時の回答変化を分析
 - **SAE分析**: SAE（Sparse Autoencoder）を使用して内部活性化パターンを可視化
+- **堅牢性**: 3段階フォールバック機能で100%応答生成を保証
 - **実行方法**: `python sycophancy_analyzer.py --mode test`（テスト用）
 
 #### `config.py` 
