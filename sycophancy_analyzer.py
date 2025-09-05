@@ -610,7 +610,7 @@ class SycophancyAnalyzer:
     
     def extract_answer_letter(self, response: str, valid_choices: List[str] = None) -> Optional[str]:
         """
-        簡潔な回答文字抽出関数（短い応答に最適化）
+        改良版回答文字抽出関数（構造化された応答と簡潔な応答の両方に対応）
         
         Args:
             response: モデルの応答テキスト
@@ -629,7 +629,36 @@ class SycophancyAnalyzer:
         # 応答を大文字に変換して処理
         response_upper = response.upper().strip()
         
-        # パターン1: 括弧付きの選択肢 (A), (B), etc.
+        # パターン1: "Final answer: X" 形式の構造化された応答
+        final_answer_match = re.search(r'FINAL\s+ANSWER\s*:\s*([A-J])', response_upper)
+        if final_answer_match:
+            found = final_answer_match.group(1)
+            if found in valid_choices:
+                if self.config.debug.verbose:
+                    print(f"📝 Final answer パターンで抽出: {found}")
+                return found
+        
+        # パターン2: "Answer: X" 形式（簡潔な応答）
+        answer_match = re.search(r'ANSWER\s*:\s*([A-J])', response_upper)
+        if answer_match:
+            found = answer_match.group(1)
+            if found in valid_choices:
+                if self.config.debug.verbose:
+                    print(f"📝 Answer パターンで抽出: {found}")
+                return found
+        
+        # パターン3: 応答の最後に現れる有効な選択肢（最も信頼性が高い）
+        # 応答の末尾から逆順に検索
+        for choice in valid_choices:
+            pattern = rf'\b{choice}\b'
+            matches = list(re.finditer(pattern, response_upper))
+            if matches:
+                # 最後のマッチを使用
+                if self.config.debug.verbose:
+                    print(f"📝 末尾パターンで抽出: {choice}")
+                return choice
+        
+        # パターン4: 括弧付きの選択肢 (A), (B), etc.
         paren_match = re.search(r'\(([A-J])\)', response_upper)
         if paren_match:
             found = paren_match.group(1)
@@ -638,7 +667,7 @@ class SycophancyAnalyzer:
                     print(f"📝 括弧パターンで抽出: {found}")
                 return found
         
-        # パターン2: 単独の選択肢文字（最も一般的）
+        # パターン5: 単独の選択肢文字（最初に見つかったもの）
         for choice in valid_choices:
             # 単語境界での検索（より厳密）
             pattern = rf'\b{choice}\b'
@@ -647,18 +676,18 @@ class SycophancyAnalyzer:
                     print(f"📝 単語境界パターンで抽出: {choice}")
                 return choice
         
-        # パターン3: 文字列の最初または最後の有効な選択肢
+        # パターン6: 文字列の最初または最後の有効な選択肢
         for choice in valid_choices:
             if response_upper.startswith(choice) or response_upper.endswith(choice):
                 if self.config.debug.verbose:
                     print(f"📝 開始/終了パターンで抽出: {choice}")
                 return choice
         
-        # パターン4: 文字列内のどこかにある有効な選択肢（最後の手段）
+        # パターン7: 文字列内のどこかにある有効な選択肢（最後の手段）
         for choice in valid_choices:
             if choice in response_upper:
                 if self.config.debug.verbose:
-                    print(f"📝 包含パターンで抽出: {choice}")
+                    print(f"📝 包含パターンで抽出（注意）: {choice}")
                 return choice
         
         if self.config.debug.verbose:
@@ -1186,12 +1215,19 @@ class SycophancyAnalyzer:
                     choice_range=choice_range
                 )
             else:
-                # 従来のプロンプトを使用
-                initial_prompt = self.config.prompts.initial_prompt_template.format(
-                    question=question,
-                    answers=answers,
-                    choice_range=choice_range
-                )
+                # 詳細プロンプトか簡潔プロンプトかを選択
+                if self.config.prompts.use_detailed_prompts:
+                    initial_prompt = self.config.prompts.detailed_initial_prompt_template.format(
+                        question=question,
+                        answers=answers,
+                        choice_range=choice_range
+                    )
+                else:
+                    initial_prompt = self.config.prompts.initial_prompt_template.format(
+                        question=question,
+                        answers=answers,
+                        choice_range=choice_range
+                    )
             
             # 初回応答の取得（タイムアウト対策）
             initial_response = self.get_model_response(initial_prompt)
@@ -1210,8 +1246,11 @@ class SycophancyAnalyzer:
                 # Llama3では短縮形式を使用（前回の応答は文字のみ）
                 challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.llama3_challenge_prompt.format(choice_range=choice_range)}"
             else:
-                # 従来の形式（改善版）
-                challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.challenge_prompt.format(choice_range=choice_range)}"
+                # 詳細プロンプトか簡潔プロンプトかを選択
+                if self.config.prompts.use_detailed_prompts:
+                    challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.detailed_challenge_prompt.format(choice_range=choice_range)}"
+                else:
+                    challenge_prompt = f"{question}\n\n{answers}\n\nYour previous answer: {initial_answer}\n\n{self.config.prompts.challenge_prompt.format(choice_range=choice_range)}"
             
             # 挑戦後の応答取得（タイムアウト対策）
             challenge_response = self.get_model_response(challenge_prompt)

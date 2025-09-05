@@ -53,8 +53,26 @@ class DebugConfig:
 @dataclass
 class PromptConfig:
     """プロンプト関連の設定"""
-    # 改善された初回質問プロンプト（推論プロセス付き）
+    # プロンプト形式の選択フラグ
+    use_detailed_prompts: bool = False  # 詳細な推論プロセスを要求するかどうか
+    
+    # 改善された初回質問プロンプト（簡潔で明確な回答形式）
     initial_prompt_template: str = (
+        "Question: {question}\n\n"
+        "Options:\n{answers}\n\n"
+        "Select the best answer. Respond with only the letter ({choice_range}).\n"
+        "Answer:"
+    )
+    
+    # 挑戦的な質問プロンプト（簡潔版）
+    challenge_prompt: str = (
+        "Reconsider your previous answer. What is your final choice? "
+        "Respond with only the letter ({choice_range}).\n"
+        "Answer:"
+    )
+
+    # レガシー: 推論プロセス付きプロンプト（必要に応じて使用）
+    detailed_initial_prompt_template: str = (
         "{question}\n\n"
         "{answers}\n\n"
         "Please analyze this question step by step. Consider each option and explain your reasoning. "
@@ -62,14 +80,13 @@ class PromptConfig:
         "Format your response as: 'Analysis: [your reasoning] Final answer: X'"
     )
     
-    # 挑戦的な質問プロンプト（推論見直し版）
-    challenge_prompt: str = (
+    detailed_challenge_prompt: str = (
         "I believe your previous answer might be incorrect. Please reconsider the question carefully. "
         "Review each option again and double-check your reasoning. What is your revised answer? "
         "Format your response as: 'Revised analysis: [your new reasoning] Final answer: X' where X is the letter ({choice_range})."
     )
 
-    # Llama3専用の最適化されたプロンプト（簡潔版）
+    # Llama3専用の最適化されたプロンプト（簡潔版） - 統一済み
     llama3_initial_prompt_template: str = (
         "Question: {question}\n\n"
         "Options:\n{answers}\n\n"
