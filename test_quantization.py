@@ -60,11 +60,24 @@ def test_quantization_config(config_name, config):
     print(f"🧪 {config_name} テスト開始")
     print(f"{'='*60}")
     
+    # より詳細な設定情報を表示
+    print(f"🔧 テスト設定詳細:")
+    print(f"   モデル: {config.model.name}")
+    print(f"   SAE: {config.model.sae_release}")
+    print(f"   サンプル数: {config.data.sample_size}")
+    print(f"   デバイス: {config.model.device}")
+    if config.model.use_quantization:
+        print(f"   量子化: {config.model.quantization_config}")
+        if config.model.load_in_4bit:
+            print(f"   4bit設定: {config.model.bnb_4bit_quant_type}, double_quant={config.model.bnb_4bit_use_double_quant}")
+        if config.model.load_in_8bit:
+            print(f"   8bit設定: 有効")
+    
     # 初期メモリ使用量
     initial_memory = check_memory_usage()
     initial_gpu_memory, initial_gpu_reserved = check_gpu_memory()
     
-    print(f"📊 初期メモリ使用量:")
+    print(f"\n📊 初期メモリ使用量:")
     print(f"   RAM: {initial_memory:.1f} MB")
     if torch.cuda.is_available():
         print(f"   GPU: {initial_gpu_memory:.1f} MB (予約: {initial_gpu_reserved:.1f} MB)")
