@@ -25,6 +25,15 @@ class ModelConfig:
     offload_to_cpu: bool = False    # 使用していない層をCPUにオフロードするか
     offload_to_disk: bool = False   # 使用していない層をディスクにオフロードするか
     
+    # 量子化設定（bitsandbytes）
+    use_quantization: bool = False   # 量子化を使用するか
+    quantization_config: Optional[str] = None  # "4bit", "8bit", None
+    load_in_4bit: bool = False      # 4bit量子化でロード
+    load_in_8bit: bool = False      # 8bit量子化でロード
+    bnb_4bit_use_double_quant: bool = True     # 4bit量子化で二重量子化を使用
+    bnb_4bit_quant_type: str = "nf4"           # 4bit量子化タイプ ("fp4", "nf4")
+    bnb_4bit_compute_dtype: str = "float16"    # 4bit量子化計算精度 ("float16", "bfloat16")
+    
 @dataclass
 class GenerationConfig:
     """テキスト生成関連の設定"""
@@ -422,6 +431,69 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
     generation=GenerationConfig(max_new_tokens=10, temperature=0.2, top_k=50)
+)
+
+# 量子化テスト用設定（4bit量子化でLlama3を軽量化）
+QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="meta-llama/Llama-3.2-3B",
+        sae_release="seonglae/Llama-3.2-3B-sae",
+        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
+        device="auto",
+        use_accelerate=True,
+        device_map="auto",
+        # 4bit量子化設定
+        use_quantization=True,
+        quantization_config="4bit",
+        load_in_4bit=True,
+        load_in_8bit=False,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype="float16",
+        # メモリ制限を大幅に削減
+        max_memory_gb=8.0,
+        offload_to_cpu=True
+    ),
+    data=DataConfig(sample_size=5),  # 最小サンプル数
+    generation=GenerationConfig(
+        max_new_tokens=10,       # 短いレスポンス
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50
+    ),
+    analysis=AnalysisConfig(top_k_features=10),  # 分析も軽量化
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+)
+
+# 量子化テスト用設定（8bit量子化版）
+QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="meta-llama/Llama-3.2-3B",
+        sae_release="seonglae/Llama-3.2-3B-sae",
+        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
+        device="auto",
+        use_accelerate=True,
+        device_map="auto",
+        # 8bit量子化設定
+        use_quantization=True,
+        quantization_config="8bit",
+        load_in_4bit=False,
+        load_in_8bit=True,
+        # メモリ制限
+        max_memory_gb=10.0,
+        offload_to_cpu=True
+    ),
+    data=DataConfig(sample_size=5),
+    generation=GenerationConfig(
+        max_new_tokens=10,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50
+    ),
+    analysis=AnalysisConfig(top_k_features=10),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
 # 設定を環境に応じて自動選択する関数
