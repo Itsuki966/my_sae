@@ -74,7 +74,8 @@ except ImportError:
 from config import (
     ExperimentConfig, DEFAULT_CONFIG, 
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
-    TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG
+    TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
+    QUANTIZED_4BIT_TEST_CONFIG, QUANTIZED_8BIT_TEST_CONFIG
 )
 
 class SycophancyAnalyzer:

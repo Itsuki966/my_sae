@@ -105,43 +105,66 @@ def test_quantization_config(config_name, config):
         
         # 簡単な分析テスト
         print(f"🔍 分析テスト実行中...")
+        print(f"   データセット: {config.data.dataset_path}")
+        print(f"   サンプル数: {config.data.sample_size}")
         start_time = time.time()
         
-        results = analyzer.analyze_sycophancy()
-        analysis_time = time.time() - start_time
-        
-        # 分析後のメモリ使用量
-        final_memory = check_memory_usage()
-        final_gpu_memory, final_gpu_reserved = check_gpu_memory()
-        
-        print(f"✅ 分析完了 ({analysis_time:.1f}秒)")
-        print(f"📊 最終メモリ使用量:")
-        print(f"   RAM: {final_memory:.1f} MB")
-        if torch.cuda.is_available():
-            print(f"   GPU: {final_gpu_memory:.1f} MB")
-            print(f"   GPU予約: {final_gpu_reserved:.1f} MB")
-        
-        # 結果サマリー
-        print(f"\n📈 結果サマリー:")
-        print(f"   サンプル数: {len(results.get('results', []))}")
-        print(f"   迎合率: {results.get('summary', {}).get('sycophancy_rate', 0):.2%}")
-        print(f"   総処理時間: {init_time + analysis_time:.1f}秒")
-        
-        return True, {
-            'init_time': init_time,
-            'analysis_time': analysis_time,
-            'memory_usage': {
-                'initial': initial_memory,
-                'after_init': after_init_memory,
-                'final': final_memory
-            },
-            'gpu_memory_usage': {
-                'initial': initial_gpu_memory,
-                'after_init': after_init_gpu_memory,
-                'final': final_gpu_memory
-            },
-            'results': results
-        }
+        try:
+            results = analyzer.run_complete_analysis()
+            analysis_time = time.time() - start_time
+            
+            # 分析後のメモリ使用量
+            final_memory = check_memory_usage()
+            final_gpu_memory, final_gpu_reserved = check_gpu_memory()
+            
+            print(f"✅ 分析完了 ({analysis_time:.1f}秒)")
+            print(f"📊 最終メモリ使用量:")
+            print(f"   RAM: {final_memory:.1f} MB")
+            if torch.cuda.is_available():
+                print(f"   GPU: {final_gpu_memory:.1f} MB")
+                print(f"   GPU予約: {final_gpu_reserved:.1f} MB")
+            
+            # 結果サマリー
+            print(f"\n📈 結果サマリー:")
+            if 'results' in results and results['results']:
+                print(f"   サンプル数: {len(results['results'])}")
+            else:
+                print(f"   サンプル数: 0")
+            
+            if 'analysis' in results and 'sycophancy_rate' in results['analysis']:
+                print(f"   迎合率: {results['analysis']['sycophancy_rate']:.2%}")
+            else:
+                print(f"   迎合率: 計算中または利用不可")
+            
+            print(f"   総処理時間: {init_time + analysis_time:.1f}秒")
+            
+            return True, {
+                'init_time': init_time,
+                'analysis_time': analysis_time,
+                'memory_usage': {
+                    'initial': initial_memory,
+                    'after_init': after_init_memory,
+                    'final': final_memory
+                },
+                'gpu_memory_usage': {
+                    'initial': initial_gpu_memory,
+                    'after_init': after_init_gpu_memory,
+                    'final': final_gpu_memory
+                },
+                'results': results
+            }
+            
+        except Exception as analysis_error:
+            analysis_time = time.time() - start_time
+            print(f"❌ 分析実行エラー ({analysis_time:.1f}秒経過): {analysis_error}")
+            print(f"\n🔍 詳細エラー情報:")
+            traceback.print_exc()
+            
+            return False, {
+                'error': str(analysis_error),
+                'init_time': init_time,
+                'analysis_time': analysis_time
+            }
         
     except Exception as e:
         print(f"❌ エラーが発生しました:")
