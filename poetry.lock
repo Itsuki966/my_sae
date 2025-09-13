@@ -485,6 +485,30 @@ files = [
 ]
 
 [[package]]
+name = "bitsandbytes"
+version = "0.47.0"
+description = "k-bit optimizers and matrix multiplication routines."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "sys_platform == \"linux\" and (python_version <= \"3.11\" or python_version >= \"3.12\")"
+files = [
+    {file = "bitsandbytes-0.47.0-py3-none-manylinux_2_24_aarch64.whl", hash = "sha256:2f805b76891a596025e9e13318b675d08481b9ee650d65e5d2f9d844084c6521"},
+    {file = "bitsandbytes-0.47.0-py3-none-manylinux_2_24_x86_64.whl", hash = "sha256:68f3fffd494a47ed1fd7593bfc5dd2ac69b68260599b71b4c4b3a32f90f3b184"},
+    {file = "bitsandbytes-0.47.0-py3-none-win_amd64.whl", hash = "sha256:4880a6d42ca9628b5a571c8cc3093dc3f5f52511e5a9e47d52d569807975531a"},
+]
+
+[package.dependencies]
+numpy = ">=1.17"
+torch = ">=2.2,<3"
+
+[package.extras]
+benchmark = ["matplotlib", "pandas"]
+dev = ["bitsandbytes[test]", "build (>=1.0.0,<2)", "pre-commit (>=3.5.0,<4)", "ruff (==0.11.2)", "wheel (>=0.42,<1)"]
+docs = ["hf-doc-builder (==0.5.0)"]
+test = ["einops (>=0.8.0,<0.9.0)", "lion-pytorch (==0.2.3)", "pytest (>=8.3,<9.0)", "scipy (>=1.11.4,<2)", "transformers (>=4.30.1,<5)"]
+
+[[package]]
 name = "black"
 version = "25.1.0"
 description = "The uncompromising code formatter."
@@ -6804,4 +6828,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "0f40f8d5ddba2fe03fb3102f9934919f84b89aad029ffc966316fe2b9d23de6b"
+content-hash = "243b5d1217b6b7c93859440775aa02f9b3c340810f6ef4c3395935e5681f044c"
