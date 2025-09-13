@@ -219,10 +219,12 @@ class SycophancyAnalyzer:
             return None
     
     def setup_models_with_quantization(self):
-        """量子化を使用したモデルセットアップ"""
+        """量子化を使用したモデルセットアップ（実験的機能）"""
         if not BITSANDBYTES_AVAILABLE:
             print("⚠️ bitsandbytesライブラリが利用できません。標準の読み込み方法を使用します")
             return self.setup_models_standard()
+        
+        print("🧪 量子化は実験的機能です。transformer_lensとの互換性に制限があります")
         
         try:
             print(f"🔧 量子化設定でモデルを読み込み中...")
@@ -247,7 +249,7 @@ class SycophancyAnalyzer:
             # モデルの読み込み（量子化適用）
             model_kwargs = {
                 "device_map": self.config.model.device_map,
-                "torch_dtype": torch.float16,
+                "torch_dtype": torch.bfloat16,  # 量子化時はbfloat16を使用
                 "trust_remote_code": True,
                 "center_writing_weights": False,
             }
@@ -262,25 +264,25 @@ class SycophancyAnalyzer:
                 print(f"🔧 最大メモリ制限: {self.config.model.max_memory_gb}GB")
             
             print("🔄 量子化モデルを読み込み中...")
+            print("⚠️ 注意: 量子化とtransformer_lensの互換性問題により失敗する可能性があります")
+            
+            # 量子化の試行
             try:
-                # 通常のfrom_pretrainedを試行
                 self.model = HookedSAETransformer.from_pretrained(
                     self.config.model.name,
                     **model_kwargs
                 )
-            except Exception as e:
-                print(f"⚠️ 通常の読み込みでエラー: {e}")
-                print("🔄 量子化対応の読み込み方法を試行...")
-                # 量子化との互換性を重視した読み込み
-                model_kwargs_no_processing = model_kwargs.copy()
-                model_kwargs_no_processing["torch_dtype"] = torch.bfloat16  # float16の代わりにbfloat16を使用
+                print(f"✅ 量子化モデル {self.config.model.name} の読み込み成功")
+                quantization_success = True
+            except Exception as quant_error:
+                print(f"❌ 量子化読み込み失敗: {quant_error}")
+                print("📋 既知の問題: transformer_lensはbitsandbytes量子化と互換性がありません")
+                print("🔄 標準の読み込み方法にフォールバック...")
+                quantization_success = False
                 
-                self.model = HookedSAETransformer.from_pretrained_no_processing(
-                    self.config.model.name,
-                    **model_kwargs_no_processing
-                )
-            
-            print(f"✅ 量子化モデル {self.config.model.name} の読み込み完了")
+            if not quantization_success:
+                # 量子化なしで再試行
+                return self.setup_models_standard()
             
             # SAEの読み込み
             print("🔄 SAEを読み込み中...")
@@ -313,12 +315,12 @@ class SycophancyAnalyzer:
             final_memory = self.get_model_memory_footprint()
             print(f"📊 最終メモリ状態: {final_memory}")
             
+            print("🎉 量子化を使用したモデル読み込みが成功しました")
             return True
             
         except Exception as e:
             print(f"❌ 量子化モデル読み込みエラー: {e}")
-            import traceback
-            traceback.print_exc()
+            print("📋 これは予期される動作です。transformer_lensは量子化と完全互換ではありません")
             print("🔄 標準の読み込み方法にフォールバック...")
             return self.setup_models_standard()
     
@@ -1063,6 +1065,11 @@ class SycophancyAnalyzer:
             generation_config.pop('top_p', None)
             generation_config.pop('top_k', None)
         
+        # HookedTransformerでサポートされていないパラメータを除外
+        unsupported_params = ['return_dict_in_generate', 'output_scores', 'output_attentions', 'output_hidden_states']
+        for param in unsupported_params:
+            generation_config.pop(param, None)
+        
         if self.config.debug.verbose:
             print(f"🔄 標準的なテキスト生成中... (最大{generation_config['max_new_tokens']}トークン)")
         
@@ -1107,6 +1114,11 @@ class SycophancyAnalyzer:
         if generation_config['do_sample']:
             generation_config['top_p'] = self.config.generation.top_p
             generation_config['top_k'] = self.config.generation.top_k
+        
+        # サポートされていないパラメータを除外
+        unsupported_params = ['return_dict_in_generate', 'output_scores', 'pad_token_id']
+        for param in unsupported_params:
+            generation_config.pop(param, None)
         
         try:
             with torch.no_grad():

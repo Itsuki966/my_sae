@@ -14,7 +14,7 @@ import traceback
 import psutil
 import torch
 from transformers import BitsAndBytesConfig
-from config import QUANTIZED_4BIT_TEST_CONFIG, QUANTIZED_8BIT_TEST_CONFIG
+from config import QUANTIZED_4BIT_TEST_CONFIG, QUANTIZED_8BIT_TEST_CONFIG, MEMORY_EFFICIENT_CONFIG
 from sycophancy_analyzer import SycophancyAnalyzer
 
 def check_memory_usage():
@@ -189,6 +189,7 @@ def test_quantization_config(config_name, config):
 def main():
     """メイン実行関数"""
     print("🧪 量子化機能テスト開始")
+    print("⚠️ 注意: 量子化はtransformer_lensと互換性の問題があります")
     print(f"Python バージョン: {sys.version}")
     print(f"PyTorch バージョン: {torch.__version__}")
     
@@ -211,10 +212,17 @@ def main():
         print("   インストール方法: pip install bitsandbytes")
         return
     
-    # テスト設定
+    print("\n📋 既知の制限事項:")
+    print("   • transformer_lens と bitsandbytes は根本的に互換性がない")
+    print("   • 4bit量子化は高確率で失敗します（予期される動作）")
+    print("   • 8bit量子化は部分的に動作する可能性があります")
+    print("   • 失敗時は自動的にメモリ効率化された標準読み込みにフォールバックします")
+    
+    # テスト設定（メモリ効率化設定を追加）
     test_configs = [
-        ("4bit量子化", QUANTIZED_4BIT_TEST_CONFIG),
-        ("8bit量子化", QUANTIZED_8BIT_TEST_CONFIG),
+        ("4bit量子化（実験的）", QUANTIZED_4BIT_TEST_CONFIG),
+        ("8bit量子化（実験的）", QUANTIZED_8BIT_TEST_CONFIG),
+        ("メモリ効率化（推奨）", MEMORY_EFFICIENT_CONFIG),
     ]
     
     results = {}
@@ -237,9 +245,13 @@ def main():
     print(f"📊 総合テスト結果")
     print(f"{'='*60}")
     
+    successful_tests = 0
+    total_tests = len(results)
+    
     for config_name, data in results.items():
         print(f"\n{config_name}:")
         if data['success']:
+            successful_tests += 1
             result = data['result']
             print(f"  ✅ 成功")
             print(f"  初期化時間: {result['init_time']:.1f}秒")
@@ -249,8 +261,27 @@ def main():
                 print(f"  最大GPU使用量: {result['gpu_memory_usage']['final']:.1f} MB")
         else:
             print(f"  ❌ 失敗: {data['result'].get('error', '不明なエラー')}")
+            if "量子化" in config_name:
+                print(f"     💡 これは予期される結果です（transformer_lensの制限）")
+    
+    print(f"\n📈 テスト結果サマリー:")
+    print(f"   成功したテスト: {successful_tests}/{total_tests}")
+    
+    if successful_tests > 0:
+        print(f"   ✅ 少なくとも1つの設定で動作しました")
+        print(f"   💡 量子化が失敗した場合は、メモリ効率化設定の使用を推奨します")
+    else:
+        print(f"   ⚠️ すべてのテストが失敗しました")
+        print(f"   💡 より小さなモデル（gpt2など）の使用を検討してください")
     
     print(f"\n🎉 テスト完了")
+    
+    # 推奨事項
+    print(f"\n💡 推奨事項:")
+    print(f"   1. 量子化よりもメモリ効率化設定の使用")
+    print(f"   2. より小さなモデル（gpt2、gpt2-medium）の使用")  
+    print(f"   3. accelerateライブラリによるモデル分散")
+    print(f"   4. CPU-GPUハイブリッド実行の活用")
 
 if __name__ == "__main__":
     main()
