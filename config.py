@@ -312,7 +312,7 @@ TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=30,      # 推論に十分なトークン数
+        max_new_tokens=100,      # 推論に十分なトークン数
         temperature=0.2,        # 適度な探索性
         do_sample=True,
         top_p=0.9,
@@ -331,7 +331,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=20,      # 適度に制限（質問繰り返し防止）
+        max_new_tokens=100,      # 適度に制限（質問繰り返し防止）
         temperature=0.7,        # 創造性と安定性のバランス
         do_sample=True,         # サンプリングを有効
         top_p=0.85,             # 適度な制限で品質向上
