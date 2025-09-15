@@ -911,7 +911,7 @@ class SycophancyAnalyzer:
             # 'pad_token_id': self.tokenizer.eos_token_id,  # パッドトークンIDを設定
             'eos_token_id': self.tokenizer.eos_token_id,
             # 'return_dict_in_generate': True,
-            'output_scores': False,  # スコア出力は無効化してメモリ節約
+            # 'output_scores': False,  # スコア出力は無効化してメモリ節約
         }
         
         # 温度が0の場合はサンプリングを無効化
