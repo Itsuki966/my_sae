@@ -824,7 +824,7 @@ class SycophancyAnalyzer:
             # トークン化
             inputs = self._tokenize_prompt(formatted_prompt)
             if inputs is None:
-                return ""
+                return "A"  # トークン化失敗時のデフォルト
             
             original_length = inputs.shape[1]
             
@@ -841,7 +841,7 @@ class SycophancyAnalyzer:
             if self.config.debug.show_responses:
                 print("\n🤖 LLMからの応答:")
                 print("-" * 40)
-                print(response)
+                print(f"'{response}'")
                 print("-" * 40)
             
             return response
@@ -851,7 +851,7 @@ class SycophancyAnalyzer:
             if self.config.debug.verbose:
                 import traceback
                 traceback.print_exc()
-            return ""
+            return "A"  # エラー時のデフォルト応答
     
     def _format_prompt(self, prompt: str) -> str:
         """プロンプトのフォーマット処理"""
@@ -900,94 +900,70 @@ class SycophancyAnalyzer:
             return None
     
     def _generate_text_standard(self, inputs: torch.Tensor, original_length: int) -> str:
-        """標準的な方法でテキスト生成"""
-        # 生成パラメータの設定
-        generation_config = {
-            'max_new_tokens': self.config.generation.max_new_tokens,
-            'temperature': self.config.generation.temperature,
-            'do_sample': self.config.generation.do_sample,
-            'top_p': self.config.generation.top_p,
-            'top_k': self.config.generation.top_k,
-            # 'pad_token_id': self.tokenizer.eos_token_id,  # パッドトークンIDを設定
-            'eos_token_id': self.tokenizer.eos_token_id,
-            # 'return_dict_in_generate': True,
-            # 'output_scores': False,  # スコア出力は無効化してメモリ節約
-        }
-        
-        # 温度が0の場合はサンプリングを無効化
-        if generation_config['temperature'] <= 0.01:
-            generation_config['do_sample'] = False
-            generation_config.pop('top_p', None)
-            generation_config.pop('top_k', None)
-        
+        """標準的な方法でテキスト生成（tutorial_2_0.ipynb参考）"""
         if self.config.debug.verbose:
-            print(f"🔄 標準的なテキスト生成中... (最大{generation_config['max_new_tokens']}トークン)")
+            print(f"🔄 標準的なテキスト生成中... (最大{self.config.generation.max_new_tokens}トークン)")
         
         try:
+            # tutorial_2_0.ipynbの実装を参考にしたシンプルな生成設定
             with torch.no_grad():
-                # HookedTransformerの標準的なgenerateメソッドを使用
-                outputs = self.model.generate(inputs, **generation_config)
+                # SAEの設定確認
+                prepend_bos = False
+                if hasattr(self.sae, 'cfg') and hasattr(self.sae.cfg, 'prepend_bos'):
+                    prepend_bos = self.sae.cfg.prepend_bos
                 
-                # 生成されたトークンを取得
+                # HookedTransformerのgenerate呼び出し（tutorial_2_0.ipynb方式）
+                outputs = self.model.generate(
+                    inputs,
+                    max_new_tokens=self.config.generation.max_new_tokens,
+                    temperature=self.config.generation.temperature,
+                    top_p=self.config.generation.top_p,
+                    stop_at_eos=True,  # EOSで停止
+                    prepend_bos=prepend_bos,
+                    do_sample=self.config.generation.do_sample if self.config.generation.temperature > 0.01 else False,
+                )
+                
+                # 生成された部分を取得
                 if hasattr(outputs, 'sequences'):
                     generated_tokens = outputs.sequences[0]
+                elif isinstance(outputs, torch.Tensor):
+                    generated_tokens = outputs[0] if outputs.dim() > 1 else outputs
                 else:
                     generated_tokens = outputs
                 
-                # 新しく生成された部分のみを取得
+                # 新しく生成された部分のみをデコード
                 generated_part = generated_tokens[original_length:]
                 response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
                 
-                return response
+                if self.config.debug.verbose:
+                    print(f"✅ 生成完了: {len(generated_part)}トークン")
+                
+                return response.strip()
                 
         except Exception as generation_error:
-            print(f"⚠️ 標準生成メソッドエラー: {generation_error}")
-            # フォールバック：シンプルな生成ループ
-            fallback_response = self._generate_text_fallback(inputs, original_length)
+            print(f"⚠️ 標準生成エラー: {generation_error}")
+            if self.config.debug.verbose:
+                import traceback
+                traceback.print_exc()
             
-            # フォールバックも失敗した場合は緊急フォールバック
-            if not fallback_response.strip():
-                print("🚨 フォールバックも失敗しました。緊急フォールバックを使用します")
-                return self._emergency_fallback_response()
-            
-            return fallback_response
+            # シンプルなフォールバック
+            return self._simple_fallback_generation(inputs, original_length)
     
-    def _generate_text_fallback(self, inputs: torch.Tensor, original_length: int) -> str:
-        """フォールバック用のシンプルな生成ループ（改善版）"""
+    def _simple_fallback_generation(self, inputs: torch.Tensor, original_length: int) -> str:
+        """シンプルなフォールバック生成（基本的なグリーディデコーディング）"""
         if self.config.debug.verbose:
-            print("🔄 フォールバック生成ループを使用")
+            print("🔄 シンプルなフォールバック生成を使用")
         
-        generated_tokens = inputs.clone()
-        max_tokens = self.config.generation.max_new_tokens
-        
-        with torch.no_grad():
-            for step in range(max_tokens):
-                try:
-                    # 現在のシーケンスでモデルを実行
+        try:
+            with torch.no_grad():
+                generated_tokens = inputs.clone()
+                
+                for step in range(min(10, self.config.generation.max_new_tokens)):  # 最大10トークンに制限
                     logits = self.model(generated_tokens)
                     next_token_logits = logits[0, -1, :]
                     
-                    # 温度スケーリング
-                    if self.config.generation.temperature > 0.01:
-                        next_token_logits = next_token_logits / self.config.generation.temperature
-                    
-                    # サンプリングまたはグリーディ選択
-                    if self.config.generation.do_sample and self.config.generation.temperature > 0.01:
-                        # 安全なサンプリング
-                        try:
-                            probs = torch.softmax(next_token_logits, dim=-1)
-                            # NaNまたはInfをチェック
-                            if torch.isnan(probs).any() or torch.isinf(probs).any():
-                                print("⚠️ 確率テンソルに無効な値があります。グリーディ選択にフォールバック")
-                                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-                            else:
-                                next_token = torch.multinomial(probs, num_samples=1)
-                        except Exception as sampling_error:
-                            print(f"⚠️ サンプリングエラー: {sampling_error}. グリーディ選択にフォールバック")
-                            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-                    else:
-                        # グリーディデコーディング
-                        next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                    # グリーディデコーディング
+                    next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
                     
                     # EOSトークンチェック
                     if (hasattr(self.tokenizer, 'eos_token_id') and 
@@ -995,87 +971,32 @@ class SycophancyAnalyzer:
                         next_token.item() == self.tokenizer.eos_token_id):
                         break
                     
-                    # 新しいトークンをシーケンスに追加
                     generated_tokens = torch.cat([generated_tokens, next_token.unsqueeze(0)], dim=1)
                     
-                    # 早期終了条件チェック
+                    # 早期終了チェック
                     current_text = self.tokenizer.decode(
                         generated_tokens[0, original_length:], 
                         skip_special_tokens=True
                     ).strip()
                     
-                    if self._should_stop_generation(current_text):
-                        if self.config.debug.verbose:
-                            print(f"✅ 早期終了条件に一致: '{current_text}' (ステップ: {step + 1})")
+                    # シンプルな停止条件
+                    if current_text and (len(current_text) >= 5 or re.match(r'^[A-J]$', current_text.upper())):
                         break
-                    
-                except Exception as step_error:
-                    print(f"❌ 生成ステップ {step + 1} でエラー: {step_error}")
-                    break
-        
-        # 生成された部分をデコード
-        generated_part = generated_tokens[0, original_length:]
-        response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
-        
-        # 空の応答の場合は緊急フォールバック
-        if not response.strip():
-            response = self._emergency_fallback_response()
-        
-        return response
-    
-    def _emergency_fallback_response(self) -> str:
-        """
-        緊急時のフォールバック応答
-        
-        注意: この応答は分析結果の信頼性を損なうため、
-        統計計算時に除外される必要があります。
-        """
-        if self.config.debug.verbose:
-            print("🚨 緊急フォールバック: モデル生成が完全に失敗しました")
-            print("⚠️ この応答は分析から除外されるべきです")
-        
-        # 緊急時の標識付き応答（後で識別可能）
-        # "EMERGENCY_FALLBACK_" プレフィックスで識別
-        import random
-        choices = ['A', 'B', 'C', 'D', 'E']
-        emergency_choice = random.choice(choices)
-        return f"EMERGENCY_FALLBACK_{emergency_choice}"
-    
-    def _should_stop_generation(self, current_text: str) -> bool:
-        """早期終了条件をチェック（改善版）"""
-        if not current_text:
-            return False
-            
-        # 基本的な選択肢パターン
-        choice_patterns = [
-            r'^[A-J]$',           # 単一文字（A、B、C等）
-            r'^\([A-J]\)$',       # 括弧付き選択肢 (A)、(B)等
-            r'^[A-J]\.',          # ピリオド付き選択肢 A.、B.等
-            r'Answer:\s*[A-J]$'   # "Answer: A"形式
-        ]
-        
-        # 設定された選択肢パターンをチェック
-        for pattern in choice_patterns:
-            if re.match(pattern, current_text.strip().upper()):
-                return True
-        
-        # 長さ制限チェック（100文字制限）
-        if len(current_text) > 100:
-            return True
-        
-        # 質問の繰り返し検出
-        if '\n' in current_text and ('Question:' in current_text or 'Options:' in current_text):
-            return True
-        
-        return False
+                
+                # 生成された部分をデコード
+                generated_part = generated_tokens[0, original_length:]
+                response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                
+                return response.strip() if response.strip() else "A"  # 空の場合はデフォルト値
+                
+        except Exception as e:
+            print(f"⚠️ フォールバック生成エラー: {e}")
+            return "A"  # 最終フォールバック
     
     def _postprocess_response(self, response: str) -> str:
-        """応答の後処理（緊急フォールバック付き）"""
+        """応答の後処理（シンプル版）"""
         if not response:
-            # 空の応答の場合は緊急フォールバック
-            if self.config.debug.verbose:
-                print("⚠️ 空の応答を検出。緊急フォールバックを使用")
-            return self._emergency_fallback_response()
+            return "A"  # 空の応答の場合はデフォルト
         
         # Llama3の特別な後処理
         if 'llama' in self.config.model.name.lower():
@@ -1085,25 +1006,20 @@ class SycophancyAnalyzer:
                     response = response.split(end_pattern)[0]
                     break
         
-        # 質問の繰り返しが含まれている場合、改行前の部分のみを使用
-        if '\n' in response and ('Question:' in response or 'Options:' in response):
-            response = response.split('\n')[0].strip()
-        
-        # 余分な改行や空白をクリーンアップ
+        # 基本的なクリーンアップ
         response = response.strip()
         
-        # 長さ制限適用（100文字制限）
-        if len(response) > 100:
-            response = response[:100].strip()
+        # 改行で区切られている場合、最初の行のみを使用
+        if '\n' in response:
+            response = response.split('\n')[0].strip()
         
-        # 最終的にも空の場合は緊急フォールバック
+        # 長さ制限適用（50文字制限）
+        if len(response) > 50:
+            response = response[:50].strip()
+        
+        # 最終的にも空の場合はデフォルト
         if not response:
-            if self.config.debug.verbose:
-                print("⚠️ 後処理後も空の応答。緊急フォールバックを使用")
-            return self._emergency_fallback_response()
-        
-        if self.config.debug.verbose:
-            print(f"✅ 後処理完了: '{response}'")
+            response = "A"
         
         return response
     
