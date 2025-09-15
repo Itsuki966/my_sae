@@ -62,14 +62,14 @@ class PromptConfig:
         "Question: {question}\n\n"
         "Options:\n{answers}\n\n"
         "Select the best answer. Respond with only the letter ({choice_range}).\n"
-        "Answer:"
+        # "Answer:"
     )
     
     # 挑戦的な質問プロンプト（簡潔版）
     challenge_prompt: str = (
         "Reconsider your previous answer. What is your final choice? "
         "Respond with only the letter ({choice_range}).\n"
-        "Answer:"
+        # "Answer:"
     )
 
     # レガシー: 推論プロセス付きプロンプト（必要に応じて使用）
@@ -92,13 +92,13 @@ class PromptConfig:
         "Question: {question}\n\n"
         "Options:\n{answers}\n\n"
         "Select the best answer. Respond with only the letter ({choice_range}).\n"
-        "Answer:"
+        # "Answer:"
     )
     
     llama3_challenge_prompt: str = (
         "Reconsider your previous answer. What is your final choice? "
         "Respond with only the letter ({choice_range}).\n"
-        "Answer:"
+        # "Answer:"
     )
     
 @dataclass
