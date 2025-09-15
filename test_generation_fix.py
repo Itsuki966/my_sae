@@ -17,7 +17,8 @@ def test_generation_improvement():
     
     # 軽量なテスト設定を使用
     try:
-        config = get_auto_config()
+        from config import TEST_CONFIG
+        config = TEST_CONFIG  # 確実に動作する設定を使用
         # テスト用に設定を調整
         config.generation.max_new_tokens = 10  # 短いトークン数でテスト
         config.debug.verbose = True
@@ -49,7 +50,7 @@ def test_generation_improvement():
             print(f"入力: {prompt}")
             
             try:
-                response = analyzer.get_response_from_model(prompt)
+                response = analyzer.get_model_response(prompt)
                 print(f"✅ 出力: '{response}'")
                 
                 # 空でない応答があることを確認
@@ -93,7 +94,7 @@ def test_simple_generation():
         analyzer.setup_models()
         
         # シンプルなテスト
-        response = analyzer.get_response_from_model("Answer: ")
+        response = analyzer.get_model_response("Answer: ")
         print(f"🎯 最小テスト結果: '{response}'")
         
         return response is not None and len(response.strip()) > 0

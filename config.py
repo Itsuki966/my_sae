@@ -202,8 +202,8 @@ class ExperimentConfig:
                 "sample_size": 50
             },
             "server_small": {
-                "name": "gpt2-medium",
-                "sae_release": "gpt2-medium-res-jb",
+                "name": "gpt2",
+                "sae_release": "gpt2-small-res-jb",
                 "sample_size": 200
             },
             "server_large": {
