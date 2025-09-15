@@ -467,6 +467,10 @@ QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
 )
 
 # 量子化テスト用設定（8bit量子化版）
+)
+)
+
+# 量子化テスト用設定（8bit量子化版）
 QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
