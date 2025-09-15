@@ -87,6 +87,16 @@ class SycophancyAnalyzer:
         print(f"📊 使用設定: {self.config.model.name}")
         print(f"🔧 デバイス: {self.device}")
     
+    def get_current_sae_device(self) -> str:
+        """SAEの現在のデバイスを取得（Llama3でのメモリ管理に必要）"""
+        if self.sae is None:
+            return self.device
+        try:
+            sae_device = next(self.sae.parameters()).device
+            return str(sae_device)
+        except (StopIteration, AttributeError):
+            return self.device
+    
     def get_model_memory_footprint(self) -> dict:
         """モデルのメモリ使用量を取得（Llama3で重要）"""
         memory_info = {}
@@ -204,9 +214,51 @@ class SycophancyAnalyzer:
 
     def setup_models_with_memory_management(self):
         """メモリ効率を重視したモデル読み込み（Llama3用）"""
-        if not ACCELERATE_AVAILABLE:
-            print("⚠️ accelerateライブラリが利用できません。基本的な読み込み方法を使用します")
-            return self.setup_models_simple()
+    def setup_models_simple(self):
+        """シンプルなモデル読み込み（gpt2, gpt2-medium用）"""
+        try:
+            print("� シンプルモードでモデル読み込み開始...")
+            
+            # 基本的な読み込み（追加のメモリ最適化なし）
+            self.model = HookedSAETransformer.from_pretrained(
+                self.config.model.name,
+                center_writing_weights=False,
+                trust_remote_code=True,
+                torch_dtype=torch.float32,  # gpt2では float32 でも十分
+            )
+            
+            print(f"✅ {self.config.model.name} を読み込み完了")
+            
+            # SAEの読み込み
+            print("🔄 SAE読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device=str(self.model.device)
+            )
+            
+            if isinstance(sae_result, tuple):
+                self.sae = sae_result[0]
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
+            else:
+                self.sae = sae_result
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
+            
+            self.sae_device = str(self.sae.device)
+            
+            # Tokenizerの取得
+            self.tokenizer = self.model.tokenizer
+            
+            print(f"� モデル配置先: {self.model.device}")
+            print(f"� SAE配置先: {self.sae_device}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ シンプル読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         
         try:
             print("🚀 メモリ効率的なモデル読み込みを開始...")
@@ -386,6 +438,37 @@ class SycophancyAnalyzer:
             traceback.print_exc()
             raise
     
+        return {'model_loaded': self.model is not None, 
+                'sae_loaded': self.sae is not None,
+                'tokenizer_loaded': self.tokenizer is not None}
+    
+    def _configure_llama3_if_needed(self):
+        """Llama3モデル用の特別な設定"""
+        if 'llama' in self.config.model.name.lower():
+            print("🔧 Llama3用設定を適用中...")
+            
+            # トークナイザー設定
+            if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                print("✅ pad_tokenをeos_tokenに設定")
+            
+            # モデル設定
+            if hasattr(self.model, 'config'):
+                if hasattr(self.model.config, 'use_cache'):
+                    self.model.config.use_cache = False
+                    print("✅ use_cacheを無効化（メモリ節約）")
+                
+                if hasattr(self.model.config, 'output_attentions'):
+                    self.model.config.output_attentions = False
+                    print("✅ output_attentionsを無効化（メモリ節約）")
+            
+            # Gradientを無効化
+            for param in self.model.parameters():
+                param.requires_grad = False
+            print("✅ 全パラメーターのgradientを無効化")
+            
+            print("✅ Llama3用設定完了")
+
     def setup_models(self):
         """モデルとSAEの初期化（モデルサイズに応じた最適化）"""
         if not SAE_AVAILABLE:
