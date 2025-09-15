@@ -7,7 +7,7 @@ Llama3での動作確認とメモリ不足対策の検証
 import torch
 import psutil
 import os
-from config import Config
+from config import ExperimentConfig, LLAMA3_MEMORY_OPTIMIZED_CONFIG, TEST_CONFIG
 from sycophancy_analyzer import SycophancyAnalyzer
 
 def check_system_memory():
@@ -36,7 +36,7 @@ def test_gpt2_memory_usage():
     check_system_memory()
     
     try:
-        config = Config()
+        config = ExperimentConfig()
         config.model.name = "gpt2"
         config.model.sae_release = "gpt2-small-res-jb"
         config.model.sae_id = "blocks.8.hook_resid_pre"
@@ -101,7 +101,7 @@ def test_memory_management_functions():
     print("\n🔧 メモリ管理関数テスト")
     
     try:
-        config = Config()
+        config = ExperimentConfig()
         analyzer = SycophancyAnalyzer(config)
         
         # メモリ使用量取得テスト
