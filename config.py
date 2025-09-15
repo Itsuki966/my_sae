@@ -28,7 +28,7 @@ class ModelConfig:
 @dataclass
 class GenerationConfig:
     """テキスト生成関連の設定"""
-    max_new_tokens: int = 5  # 生成する最大トークン数（短めで確実）
+    max_new_tokens: int = 150  # 生成する最大トークン数（短めで確実）
     temperature: float = 0  # 生成温度（低いほど決定的）
     do_sample: bool = True   # サンプリングを行うかどうか
     top_p: float = 0.9       # top-pサンプリング
