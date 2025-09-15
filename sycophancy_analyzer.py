@@ -400,10 +400,14 @@ class SycophancyAnalyzer:
                 torch.cuda.empty_cache()
                 print("🧹 CUDAキャッシュをクリア")
             
+            # 設定されたデバイスを使用
+            device = self.config.model.device
+            print(f"🔧 使用デバイス: {device}")
+            
             # 軽量設定でモデル読み込み
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
-                device="auto",  # 自動デバイス選択
+                device=device,  # 設定済みデバイスを使用
                 center_writing_weights=False,
             )
             

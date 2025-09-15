@@ -148,6 +148,15 @@ class ExperimentConfig:
                     self.model.device = "cpu"
             else:
                 self.model.device = "cpu"
+            
+            print(f"🔧 自動デバイス選択: {self.model.device}")
+        
+        # device_mapも同様に修正
+        if hasattr(self.model, 'device_map') and self.model.device_map == "auto":
+            if self.model.device == "cpu":
+                self.model.device_map = "cpu"
+            else:
+                self.model.device_map = "sequential"
         
         # GPU利用可能性をログ出力
         if self.debug.verbose:
