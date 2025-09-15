@@ -908,7 +908,7 @@ class SycophancyAnalyzer:
             'do_sample': self.config.generation.do_sample,
             'top_p': self.config.generation.top_p,
             'top_k': self.config.generation.top_k,
-            'pad_token_id': self.tokenizer.eos_token_id,  # パッドトークンIDを設定
+            # 'pad_token_id': self.tokenizer.eos_token_id,  # パッドトークンIDを設定
             'eos_token_id': self.tokenizer.eos_token_id,
             'return_dict_in_generate': True,
             'output_scores': False,  # スコア出力は無効化してメモリ節約
