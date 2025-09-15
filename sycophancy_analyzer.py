@@ -262,23 +262,10 @@ class SycophancyAnalyzer:
                 print(f"🔧 最大メモリ制限: {self.config.model.max_memory_gb}GB")
             
             print("🔄 量子化モデルを読み込み中...")
-            try:
-                # 通常のfrom_pretrainedを試行
-                self.model = HookedSAETransformer.from_pretrained(
-                    self.config.model.name,
-                    **model_kwargs
-                )
-            except Exception as e:
-                print(f"⚠️ 通常の読み込みでエラー: {e}")
-                print("🔄 量子化対応の読み込み方法を試行...")
-                # 量子化との互換性を重視した読み込み
-                model_kwargs_no_processing = model_kwargs.copy()
-                model_kwargs_no_processing["torch_dtype"] = torch.bfloat16  # float16の代わりにbfloat16を使用
-                
-                self.model = HookedSAETransformer.from_pretrained_no_processing(
-                    self.config.model.name,
-                    **model_kwargs_no_processing
-                )
+            self.model = HookedSAETransformer.from_pretrained(
+                self.config.model.name,
+                **model_kwargs
+            )
             
             print(f"✅ 量子化モデル {self.config.model.name} の読み込み完了")
             
@@ -1049,13 +1036,11 @@ class SycophancyAnalyzer:
             'do_sample': self.config.generation.do_sample,
             'top_p': self.config.generation.top_p,
             'top_k': self.config.generation.top_k,
+            'pad_token_id': self.tokenizer.eos_token_id,  # パッドトークンIDを設定
             'eos_token_id': self.tokenizer.eos_token_id,
             'return_dict_in_generate': True,
             'output_scores': False,  # スコア出力は無効化してメモリ節約
         }
-        
-        # HookedTransformer では pad_token_id はサポートされていないため削除
-        # 'pad_token_id': self.tokenizer.eos_token_id,  # コメントアウト
         
         # 温度が0の場合はサンプリングを無効化
         if generation_config['temperature'] <= 0.01:
@@ -1080,57 +1065,20 @@ class SycophancyAnalyzer:
                 # 新しく生成された部分のみを取得
                 generated_part = generated_tokens[original_length:]
                 response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
+                
                 return response
                 
-        except TypeError as te:
-            print(f"⚠️ 標準生成メソッドエラー: {te}")
-            # pad_token_id エラーなどの場合の代替生成方法
-            return self._generate_text_alternative(inputs, original_length)
-        except Exception as e:
-            print(f"⚠️ 生成エラー: {e}")
-            # その他のエラーの場合も代替方法を使用
-            return self._generate_text_alternative(inputs, original_length)
-    
-    def _generate_text_alternative(self, inputs: torch.Tensor, original_length: int) -> str:
-        """代替生成メソッド（HookedTransformerとの互換性を重視）"""
-        if self.config.debug.verbose:
-            print("🔄 代替生成メソッドを使用")
-        
-        # より基本的な生成設定（互換性重視）
-        generation_config = {
-            'max_new_tokens': self.config.generation.max_new_tokens,
-            'temperature': max(self.config.generation.temperature, 0.01),  # 最小温度を設定
-            'do_sample': self.config.generation.do_sample if self.config.generation.temperature > 0.01 else False,
-        }
-        
-        # HookedTransformerでサポートされていない可能性のあるパラメータを除外
-        if generation_config['do_sample']:
-            generation_config['top_p'] = self.config.generation.top_p
-            generation_config['top_k'] = self.config.generation.top_k
-        
-        try:
-            with torch.no_grad():
-                # より基本的なgenerateメソッド
-                outputs = self.model.generate(
-                    inputs,
-                    **generation_config
-                )
-                
-                # 出力処理
-                if hasattr(outputs, 'sequences'):
-                    generated_tokens = outputs.sequences[0]
-                else:
-                    generated_tokens = outputs
-                
-                # 新しく生成された部分のみを取得
-                generated_part = generated_tokens[original_length:]
-                response = self.tokenizer.decode(generated_part, skip_special_tokens=True)
-                return response
-                
-        except Exception as alt_error:
-            print(f"⚠️ 代替生成メソッドもエラー: {alt_error}")
-            # 最後の手段：フォールバック生成
-            return self._generate_text_fallback(inputs, original_length)
+        except Exception as generation_error:
+            print(f"⚠️ 標準生成メソッドエラー: {generation_error}")
+            # フォールバック：シンプルな生成ループ
+            fallback_response = self._generate_text_fallback(inputs, original_length)
+            
+            # フォールバックも失敗した場合は緊急フォールバック
+            if not fallback_response.strip():
+                print("🚨 フォールバックも失敗しました。緊急フォールバックを使用します")
+                return self._emergency_fallback_response()
+            
+            return fallback_response
     
     def _generate_text_fallback(self, inputs: torch.Tensor, original_length: int) -> str:
         """フォールバック用のシンプルな生成ループ（改善版）"""
@@ -1249,43 +1197,6 @@ class SycophancyAnalyzer:
         
         return False
     
-    def _is_valid_response(self, response: str) -> bool:
-        """生成された応答が有効かチェック"""
-        if not response or not response.strip():
-            return False
-        
-        response = response.strip()
-        
-        # 異常な繰り返しパターンをチェック
-        abnormal_patterns = [
-            r'!{5,}',           # 連続した感嘆符（!!!!!など）
-            r'#{5,}',           # 連続したハッシュ
-            r'\*{5,}',          # 連続したアスタリスク
-            r'-{10,}',          # 長い連続したハイフン
-            r'\.{5,}',          # 連続したピリオド
-            r'[A-Za-z]\1{10,}'  # 同じ文字の異常な繰り返し
-        ]
-        
-        for pattern in abnormal_patterns:
-            if re.search(pattern, response):
-                if self.config.debug.verbose:
-                    print(f"⚠️ 異常なパターンを検出: {pattern} in '{response[:50]}...'")
-                return False
-        
-        # 語彙に存在しない文字の大量連続をチェック
-        if len(set(response)) == 1 and len(response) > 5:  # 同じ文字だけの長い文字列
-            if self.config.debug.verbose:
-                print(f"⚠️ 同一文字の異常な繰り返しを検出: '{response[:20]}...'")
-            return False
-        
-        # 制御文字の検出
-        if any(ord(c) < 32 and c not in ['\n', '\t', '\r'] for c in response):
-            if self.config.debug.verbose:
-                print(f"⚠️ 制御文字を検出")
-            return False
-        
-        return True
-    
     def _postprocess_response(self, response: str) -> str:
         """応答の後処理（緊急フォールバック付き）"""
         if not response:
@@ -1308,12 +1219,6 @@ class SycophancyAnalyzer:
         
         # 余分な改行や空白をクリーンアップ
         response = response.strip()
-        
-        # 有効性チェック
-        if not self._is_valid_response(response):
-            if self.config.debug.verbose:
-                print(f"⚠️ 無効な応答を検出: '{response[:50]}...'. 緊急フォールバックを使用")
-            return self._emergency_fallback_response()
         
         # 長さ制限適用（100文字制限）
         if len(response) > 100:

@@ -442,31 +442,31 @@ QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
         device="auto",
         use_accelerate=True,
         device_map="auto",
-        # 4bit量子化設定（安定性重視）
+        # 4bit量子化設定
         use_quantization=True,
         quantization_config="4bit",
         load_in_4bit=True,
         load_in_8bit=False,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype="bfloat16",  # float16からbfloat16に変更（より安定）
+        bnb_4bit_compute_dtype="float16",
         # メモリ制限を大幅に削減
         max_memory_gb=8.0,
         offload_to_cpu=True
     ),
     data=DataConfig(sample_size=5),  # 最小サンプル数
     generation=GenerationConfig(
-        max_new_tokens=5,        # さらに短いレスポンス（安定性重視）
-        temperature=0.1,         # 低温度で安定性向上
-        do_sample=False,         # グリーディ生成で安定性向上
+        max_new_tokens=10,       # 短いレスポンス
+        temperature=0.3,
+        do_sample=True,
         top_p=0.9,
         top_k=50
     ),
     analysis=AnalysisConfig(top_k_features=10),
-    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+    debug=DebugConfig(verbose=False, show_prompts=True, show_responses=True)
 )
 
-# 量子化テスト用設定（8bit量子化版 - より安定）
+# 量子化テスト用設定（8bit量子化版）
 QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
@@ -475,7 +475,7 @@ QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
         device="auto",
         use_accelerate=True,
         device_map="auto",
-        # 8bit量子化設定（より安定）
+        # 8bit量子化設定
         use_quantization=True,
         quantization_config="8bit",
         load_in_4bit=False,
@@ -486,14 +486,14 @@ QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=5,        # 短いレスポンス（安定性重視）
-        temperature=0.1,         # 低温度（安定性重視）
-        do_sample=False,         # グリーディ生成
+        max_new_tokens=10,
+        temperature=0.3,
+        do_sample=True,
         top_p=0.9,
         top_k=50
     ),
     analysis=AnalysisConfig(top_k_features=10),
-    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+    debug=DebugConfig(verbose=False, show_prompts=True, show_responses=True)
 )
 
 # 設定を環境に応じて自動選択する関数
