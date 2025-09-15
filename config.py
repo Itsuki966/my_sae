@@ -139,7 +139,7 @@ class ExperimentConfig:
     
     def __post_init__(self):
         """設定の後処理とバリデーション"""
-        # デバイス設定の自動判定（既に設定済みの場合はスキップ）
+        # デバイス設定の自動判定
         if self.model.device == "auto":
             import platform
             import torch
@@ -157,17 +157,17 @@ class ExperimentConfig:
                     self.model.device = "cpu"
             else:
                 self.model.device = "cpu"
-            
-            # GPU利用可能性をログ出力（1回のみ）
-            if self.debug.verbose:
-                import torch
-                print(f"🖥️  デバイス設定: {self.model.device}")
-                if self.model.device == "mps":
-                    print("🍎 macOS MPS (Metal Performance Shaders) を使用")
-                elif self.model.device == "cuda":
-                    print(f"🚀 CUDA GPU を使用: {torch.cuda.get_device_name()}")
-                elif self.model.device == "cpu":
-                    print("💻 CPU を使用")
+        
+        # GPU利用可能性をログ出力
+        if self.debug.verbose:
+            import torch
+            print(f"🖥️  デバイス設定: {self.model.device}")
+            if self.model.device == "mps":
+                print("🍎 macOS MPS (Metal Performance Shaders) を使用")
+            elif self.model.device == "cuda":
+                print(f"🚀 CUDA GPU を使用: {torch.cuda.get_device_name()}")
+            elif self.model.device == "cpu":
+                print("💻 CPU を使用")
     
     def auto_adjust_for_environment(self):
         """環境に応じて設定を自動調整"""
@@ -462,12 +462,8 @@ QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
         top_p=0.9,
         top_k=50
     ),
-    analysis=AnalysisConfig(top_k_features=10),
-    debug=DebugConfig(verbose=False, show_prompts=True, show_responses=True)
-)
-
-# 量子化テスト用設定（8bit量子化版）
-)
+    analysis=AnalysisConfig(top_k_features=10),  # 分析も軽量化
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
 # 量子化テスト用設定（8bit量子化版）
@@ -497,7 +493,7 @@ QUANTIZED_8BIT_TEST_CONFIG = ExperimentConfig(
         top_k=50
     ),
     analysis=AnalysisConfig(top_k_features=10),
-    debug=DebugConfig(verbose=False, show_prompts=True, show_responses=True)
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
 # 設定を環境に応じて自動選択する関数
