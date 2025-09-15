@@ -54,15 +54,6 @@ except ImportError:
     print("警告: accelerateライブラリが利用できません。pip install accelerate でインストールを推奨します")
     ACCELERATE_AVAILABLE = False
 
-# bitsandbytesライブラリ（量子化用）
-try:
-    import bitsandbytes as bnb
-    from transformers import BitsAndBytesConfig
-    BITSANDBYTES_AVAILABLE = True
-except ImportError:
-    print("警告: bitsandbytesライブラリが利用できません。量子化機能は無効になります")
-    BITSANDBYTES_AVAILABLE = False
-
 # torch.nn.utilsからのメモリ最適化
 try:
     from torch.nn.utils import clip_grad_norm_
@@ -197,116 +188,6 @@ class SycophancyAnalyzer:
             memory_info['error'] = str(e)
         
         return memory_info
-    
-    def create_quantization_config(self):
-        """量子化設定を作成"""
-        if not self.config.model.use_quantization or not BITSANDBYTES_AVAILABLE:
-            return None
-        
-        if self.config.model.quantization_config == "4bit":
-            return BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_use_double_quant=self.config.model.bnb_4bit_use_double_quant,
-                bnb_4bit_quant_type=self.config.model.bnb_4bit_quant_type,
-                bnb_4bit_compute_dtype=getattr(torch, self.config.model.bnb_4bit_compute_dtype)
-            )
-        elif self.config.model.quantization_config == "8bit":
-            return BitsAndBytesConfig(
-                load_in_8bit=True,
-            )
-        else:
-            return None
-    
-    def setup_models_with_quantization(self):
-        """量子化を使用したモデルセットアップ"""
-        if not BITSANDBYTES_AVAILABLE:
-            print("⚠️ bitsandbytesライブラリが利用できません。標準の読み込み方法を使用します")
-            return self.setup_models_standard()
-        
-        try:
-            print(f"🔧 量子化設定でモデルを読み込み中...")
-            
-            # メモリクリア
-            self.optimize_memory_usage()
-            
-            # 量子化設定を作成
-            quantization_config = self.create_quantization_config()
-            
-            if quantization_config:
-                if self.config.model.load_in_4bit:
-                    print(f"📉 4bit量子化を使用")
-                    print(f"   二重量子化: {self.config.model.bnb_4bit_use_double_quant}")
-                    print(f"   量子化タイプ: {self.config.model.bnb_4bit_quant_type}")
-                    print(f"   計算精度: {self.config.model.bnb_4bit_compute_dtype}")
-                elif self.config.model.load_in_8bit:
-                    print(f"📉 8bit量子化を使用")
-            else:
-                print("⚠️ 量子化設定が無効です")
-            
-            # モデルの読み込み（量子化適用）
-            model_kwargs = {
-                "device_map": self.config.model.device_map,
-                "torch_dtype": torch.float16,
-                "trust_remote_code": True,
-                "center_writing_weights": False,
-            }
-            
-            if quantization_config:
-                model_kwargs["quantization_config"] = quantization_config
-            
-            # メモリ制限設定
-            if self.config.model.max_memory_gb:
-                max_memory = {0: f"{self.config.model.max_memory_gb}GB"}
-                model_kwargs["max_memory"] = max_memory
-                print(f"🔧 最大メモリ制限: {self.config.model.max_memory_gb}GB")
-            
-            print("🔄 量子化モデルを読み込み中...")
-            self.model = HookedSAETransformer.from_pretrained(
-                self.config.model.name,
-                **model_kwargs
-            )
-            
-            print(f"✅ 量子化モデル {self.config.model.name} の読み込み完了")
-            
-            # SAEの読み込み
-            print("🔄 SAEを読み込み中...")
-            sae_result = SAE.from_pretrained(
-                release=self.config.model.sae_release,
-                sae_id=self.config.model.sae_id,
-                device=str(next(self.model.parameters()).device)  # モデルと同じデバイスに
-            )
-            
-            # SAEの処理
-            if isinstance(sae_result, tuple):
-                self.sae = sae_result[0]
-                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
-            else:
-                self.sae = sae_result
-                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
-            
-            # デバイス情報の記録
-            model_device = next(self.model.parameters()).device
-            self.sae_device = str(model_device)
-            print(f"📱 モデルデバイス: {model_device}")
-            
-            # Tokenizerの取得
-            self.tokenizer = self.model.tokenizer
-            
-            # Llama3での特別な設定
-            self._configure_llama3_if_needed()
-            
-            # 最終メモリ状態
-            final_memory = self.get_model_memory_footprint()
-            print(f"📊 最終メモリ状態: {final_memory}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ 量子化モデル読み込みエラー: {e}")
-            import traceback
-            traceback.print_exc()
-            print("🔄 標準の読み込み方法にフォールバック...")
-            return self.setup_models_standard()
     
     def setup_models_with_accelerate(self):
         """accelerateライブラリを使用したメモリ効率的なモデル読み込み"""
@@ -616,19 +497,11 @@ class SycophancyAnalyzer:
             self.use_chat_template = False
     
     def setup_models(self):
-        """モデルとSAEの初期化（量子化・メモリ効率化対応）"""
+        """モデルとSAEの初期化（メモリ効率化対応）"""
         if not SAE_AVAILABLE:
             raise ImportError("SAE Lensが利用できません")
         
-        print("🔄 モデル読み込みを開始...")
-        
-        # 量子化が有効な場合は量子化読み込みを優先
-        if self.config.model.use_quantization and BITSANDBYTES_AVAILABLE:
-            print("🔧 量子化設定が有効です")
-            success = self.setup_models_with_quantization()
-            if success:
-                print("✅ 量子化を使用したモデル読み込み完了")
-                return
+        print("🔄 メモリ効率化されたモデル読み込みを開始...")
         
         # accelerateライブラリが利用可能な場合は効率的な読み込みを試行
         if ACCELERATE_AVAILABLE:
