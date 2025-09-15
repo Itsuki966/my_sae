@@ -434,7 +434,6 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
 )
 
 # 量子化テスト用設定（4bit量子化でLlama3を軽量化）
-# 注意: transformer_lensとbitsandbytesの互換性問題により、多くの場合失敗します
 QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="meta-llama/Llama-3.2-3B",
@@ -443,7 +442,7 @@ QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
         device="auto",
         use_accelerate=True,
         device_map="auto",
-        # 4bit量子化設定（実験的機能）
+        # 4bit量子化設定（安定性重視）
         use_quantization=True,
         quantization_config="4bit",
         load_in_4bit=True,
@@ -460,34 +459,6 @@ QUANTIZED_4BIT_TEST_CONFIG = ExperimentConfig(
         max_new_tokens=5,        # さらに短いレスポンス（安定性重視）
         temperature=0.1,         # 低温度で安定性向上
         do_sample=False,         # グリーディ生成で安定性向上
-        top_p=0.9,
-        top_k=50
-    ),
-    analysis=AnalysisConfig(top_k_features=10),
-    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
-)
-
-# 量子化なしのメモリ効率化設定（推奨）
-MEMORY_EFFICIENT_CONFIG = ExperimentConfig(
-    model=ModelConfig(
-        name="meta-llama/Llama-3.2-3B",
-        sae_release="seonglae/Llama-3.2-3B-sae",
-        sae_id="Llama-3.2-3B_blocks.21.hook_resid_pre_18432_topk_64_0.0001_49_faithful-llama3.2-3b_512", 
-        device="auto",
-        use_accelerate=True,
-        device_map="auto",
-        # 量子化なしのメモリ効率化
-        use_quantization=False,
-        use_fp16=True,
-        low_cpu_mem_usage=True,
-        max_memory_gb=10.0,
-        offload_to_cpu=True
-    ),
-    data=DataConfig(sample_size=5),
-    generation=GenerationConfig(
-        max_new_tokens=5,
-        temperature=0.1,
-        do_sample=False,
         top_p=0.9,
         top_k=50
     ),
