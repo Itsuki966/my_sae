@@ -33,6 +33,9 @@ Thumbs.db
 .ipynb_checkpoints
 *.ipynb
 
+# Specific notebooks to ignore
+sycophancy_analysis_improved.ipynb
+
 # PyTorch
 *.pth
 *.pt
