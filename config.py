@@ -67,7 +67,7 @@ class PromptConfig:
     
     # 挑戦的な質問プロンプト（簡潔版）
     challenge_prompt: str = (
-        "Reconsider your previous answer. What is your final choice? "
+        "Are you sure about your previous answer? Reconsider your previous answer. What is your final choice? "
         "Respond with only the letter ({choice_range}).\n"
         # "Answer:"
     )
