@@ -38,6 +38,9 @@ python sycophancy_analyzer.py --mode auto
 
 # Llama3テスト実行
 python sycophancy_analyzer.py --mode llama3-test
+
+# Gemma-2Bテスト実行
+python sycophancy_analyzer.py --mode gemma-2b-test
 ```
 
 ### 主要オプション
@@ -48,6 +51,8 @@ python sycophancy_analyzer.py --mode llama3-test
   - `llama3-test`: Llama3テスト（サンプル数5）
   - `llama3-prod`: Llama3本番実行（サンプル数1000）
   - `llama3-memory`: Llama3メモリ効率化実行
+  - `gemma-2b-test`: Gemma-2Bテスト（サンプル数5）
+  - `gemma-2b-prod`: Gemma-2B本番実行（サンプル数1000）
   - `auto`: 環境に応じて自動選択
 
 - `--sample-size`: サンプル数を上書き
@@ -95,6 +100,7 @@ class GenerationConfig:
 
 - `TEST_CONFIG`: GPT-2軽量テスト（サンプル数5）
 - `LLAMA3_TEST_CONFIG`: Llama3テスト（サンプル数5）
+- `GEMMA2B_TEST_CONFIG`: Gemma-2Bテスト（サンプル数5）
 - `SERVER_LARGE_CONFIG`: サーバー用大規模実験（サンプル数1000）
 - `MAC_CONFIG`: Mac環境用軽量設定
 
@@ -103,6 +109,7 @@ class GenerationConfig:
 ### SAE設定
 - `blocks.5.hook_resid_pre`: GPT-2のブロック5の残差接続前
 - `blocks.21.hook_resid_pre`: Llama3のブロック21の残差接続前
+- `blocks.12.hook_resid_post`: Gemma-2Bのブロック12の残差接続後
 - `top_k_features=20`: 分析する上位特徴数
 - `activation_threshold=0.1`: SAE活性化閾値
 
