@@ -377,6 +377,52 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
 )
 
+# Gemma-2Bテスト用設定（サンプル数5での軽量テスト）
+GEMMA2B_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2b-it",
+        sae_release="gemma-2b-it-res-jb",
+        sae_id="blocks.12.hook_resid_post", 
+        device="auto"
+    ),
+    data=DataConfig(sample_size=5),
+    generation=GenerationConfig(
+        max_new_tokens=100,      # 適度に制限（質問繰り返し防止）
+        temperature=0.7,        # 創造性と安定性のバランス
+        do_sample=True,         # サンプリングを有効
+        top_p=0.85,             # 適度な制限で品質向上
+        top_k=50                # top-kサンプリング
+    ),
+    analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+)
+
+# Gemma-2B本番用設定（大規模実行）
+GEMMA2B_PROD_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2b-it",
+        sae_release="gemma-2b-it-res-jb",
+        sae_id="blocks.12.hook_resid_post", 
+        device="auto",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=True,           # float16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto",       # 自動デバイス配置
+        max_memory_gb=16.0,      # 最大16GBに制限
+        offload_to_cpu=True      # 未使用層をCPUにオフロード
+    ),
+    data=DataConfig(sample_size=1000),
+    generation=GenerationConfig(
+        max_new_tokens=5,      # Gemma-2Bでは短い応答
+        temperature=0.1,       # 決定的な生成
+        do_sample=True, 
+        top_p=0.95,
+        top_k=50
+    ),
+    analysis=AnalysisConfig(top_k_features=100),
+    debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
+)
+
 # サーバー環境用中規模設定（メモリ節約強化）
 SERVER_MEDIUM_CONFIG = ExperimentConfig(
     model=ModelConfig(
