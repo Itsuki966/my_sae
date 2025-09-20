@@ -182,13 +182,21 @@ class ExperimentConfig:
         try:
             import torch
             if torch.cuda.is_available() and self.model.device in ["cuda", "auto"]:
+                # GPUメモリを強制的にクリア
+                torch.cuda.empty_cache()
+                
                 gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
                 gpu_allocated = torch.cuda.memory_allocated() / 1e9
                 gpu_cached = torch.cuda.memory_reserved() / 1e9
                 gpu_available = gpu_memory - gpu_allocated - gpu_cached
                 
-                # Gemma-2Bの推定メモリ使用量（約4-6GB）
-                estimated_model_memory = 5.0  # GB
+                # より厳しい推定メモリ使用量（Gemma-2Bで実際には6-8GB必要）
+                if "gemma" in self.model.name.lower():
+                    estimated_model_memory = 8.0  # GB（安全マージン込み）
+                elif "llama" in self.model.name.lower():
+                    estimated_model_memory = 7.0  # GB
+                else:
+                    estimated_model_memory = 4.0  # GPT-2系
                 
                 if self.debug.verbose:
                     print(f"🔍 GPU メモリチェック:")
@@ -198,25 +206,23 @@ class ExperimentConfig:
                     print(f"   利用可能: {gpu_available:.1f}GB")
                     print(f"   モデル推定: {estimated_model_memory:.1f}GB")
                 
+                # 既に大量のメモリが使用されている場合は即座にCPUにフォールバック
+                if gpu_allocated > 8.0:  # 8GB以上既に使用されている
+                    print(f"⚠️ GPU に大量メモリが既に使用中 ({gpu_allocated:.2f}GB)")
+                    print("🔄 CPU モードに強制切り替えします")
+                    self._force_cpu_mode()
+                    return
+                
                 # VRAM不足の場合はCPUにフォールバック
                 if gpu_available < estimated_model_memory:
                     print(f"⚠️ VRAM不足 ({gpu_available:.1f}GB < {estimated_model_memory:.1f}GB)")
                     print("🔄 CPU モードに自動切り替えします")
-                    self.model.device = "cpu"
-                    self.model.device_map = "cpu"
-                    self.model.use_fp16 = False  # CPUではfp32
-                    self.model.offload_to_cpu = False
-                    self.model.offload_to_disk = True
+                    self._force_cpu_mode()
                     
-                    # サンプルサイズも調整
-                    if self.data.sample_size > 50:
-                        self.data.sample_size = 50
-                        print(f"📉 CPU実行のためサンプルサイズを{self.data.sample_size}に調整")
-                    
-                elif gpu_available < estimated_model_memory * 1.5:  # 余裕がない場合
+                elif gpu_available < estimated_model_memory * 1.2:  # 余裕がない場合
                     print(f"⚠️ GPU メモリに余裕がありません ({gpu_available:.1f}GB)")
                     print("🔧 積極的なオフロード設定に調整します")
-                    self.model.max_memory_gb = min(8.0, gpu_available * 0.8)
+                    self.model.max_memory_gb = min(6.0, gpu_available * 0.6)  # より保守的
                     self.model.offload_to_cpu = True
                     self.model.offload_to_disk = True
                     
@@ -224,9 +230,22 @@ class ExperimentConfig:
             if self.debug.verbose:
                 print(f"⚠️ メモリチェックでエラー: {e}")
                 print("🔄 安全のためCPUモードに設定します")
-            self.model.device = "cpu"
-            self.model.device_map = "cpu"
-            self.model.use_fp16 = False
+            self._force_cpu_mode()
+    
+    def _force_cpu_mode(self):
+        """CPUモードに強制切り替え"""
+        self.model.device = "cpu"
+        self.model.device_map = "cpu"
+        self.model.use_fp16 = False  # CPUではfp32
+        self.model.offload_to_cpu = False
+        self.model.offload_to_disk = True
+        self.model.max_memory_gb = None
+        
+        # サンプルサイズも調整
+        if self.data.sample_size > 20:
+            original_size = self.data.sample_size
+            self.data.sample_size = min(20, self.data.sample_size)
+            print(f"📉 CPU実行のためサンプルサイズを{original_size}→{self.data.sample_size}に調整")
 
     def auto_adjust_for_environment(self):
         """環境に応じて設定を自動調整"""
@@ -603,12 +622,132 @@ def get_auto_config() -> ExperimentConfig:
         except:
             return LIGHTWEIGHT_CONFIG
 
+# メモリクリア機能付きGemma-2B CPU設定
+GEMMA2B_CPU_SAFE_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2b-it",
+        sae_release="gemma-2b-it-res-jb",
+        sae_id="blocks.12.hook_resid_post", 
+        device="cpu",           # CPUを強制使用
+        use_accelerate=True,    # CPU最適化
+        use_fp16=False,         # CPUではfp32を使用
+        low_cpu_mem_usage=True,
+        device_map="cpu",       # 全てCPUに配置
+        max_memory_gb=None,     # CPU RAMは制限なし
+        offload_to_cpu=False,   # 既にCPU
+        offload_to_disk=True    # 必要に応じてディスクにオフロード
+    ),
+    data=DataConfig(sample_size=3),  # 更に少なく
+    generation=GenerationConfig(
+        max_new_tokens=20,      # 短く制限
+        temperature=0.1,        # 決定的
+        do_sample=True,
+        top_p=0.9,
+        top_k=50
+    ),
+    analysis=AnalysisConfig(top_k_features=5),  # 最小限
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
+)
+
+# VRAM不足対応の緊急CPU設定
+EMERGENCY_CPU_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gpt2",  # 最軽量モデルに変更
+        sae_release="gpt2-small-res-jb",
+        sae_id="blocks.5.hook_resid_pre",
+        device="cpu",
+        use_accelerate=True,
+        use_fp16=False,
+        low_cpu_mem_usage=True,
+        device_map="cpu",
+        offload_to_disk=True
+    ),
+    data=DataConfig(sample_size=3),
+    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    analysis=AnalysisConfig(top_k_features=5),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+)
+
 # VRAM不足時の推奨設定を取得する関数
 def get_low_vram_config(target_model: str = "gemma-2b-it") -> ExperimentConfig:
     """VRAM不足時の推奨設定を取得"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_allocated = torch.cuda.memory_allocated() / 1e9
+            if gpu_allocated > 8.0:  # 8GB以上使用されている場合
+                print(f"🆘 緊急モード: GPU使用量が{gpu_allocated:.1f}GB - 最軽量設定を使用")
+                return EMERGENCY_CPU_CONFIG
+    except:
+        pass
+    
     if target_model == "gemma-2b-it":
-        return GEMMA2B_CPU_CONFIG
+        return GEMMA2B_CPU_SAFE_CONFIG
     elif target_model.startswith("gpt2"):
         return LIGHTWEIGHT_CONFIG
     else:
-        return MAC_CONFIG  # 最軽量設定
+        return EMERGENCY_CPU_CONFIG
+
+# GPU メモリクリア関数
+def clear_gpu_memory():
+    """GPUメモリを強制的にクリア"""
+    try:
+        import torch
+        import gc
+        
+        if torch.cuda.is_available():
+            # PyTorchのGPUメモリをクリア
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            
+            # ガベージコレクション実行
+            gc.collect()
+            
+            # メモリ使用量を再取得
+            gpu_allocated = torch.cuda.memory_allocated() / 1e9
+            gpu_cached = torch.cuda.memory_reserved() / 1e9
+            print(f"🧹 GPU メモリクリア完了: 使用中 {gpu_allocated:.2f}GB, キャッシュ {gpu_cached:.2f}GB")
+            
+            return gpu_allocated < 2.0  # 2GB未満なら成功
+        return True
+    except Exception as e:
+        print(f"⚠️ GPU メモリクリアでエラー: {e}")
+        return False
+
+# メモリ不足検知とフォールバック設定取得
+def get_memory_safe_config(target_model: str = "gemma-2b-it") -> ExperimentConfig:
+    """メモリ状況を確認して最適な設定を取得"""
+    try:
+        import torch
+        
+        # GPUメモリクリアを試行
+        if not clear_gpu_memory():
+            print("🔄 GPU メモリクリア失敗 - CPU設定を使用")
+            return get_low_vram_config(target_model)
+        
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+            gpu_allocated = torch.cuda.memory_allocated() / 1e9
+            gpu_available = gpu_memory - gpu_allocated
+            
+            print(f"💾 メモリ状況: 利用可能 {gpu_available:.1f}GB / 総容量 {gpu_memory:.1f}GB")
+            
+            # 厳しい基準でチェック
+            if target_model == "gemma-2b-it" and gpu_available < 9.0:
+                print("⚠️ Gemma-2B にはVRAMが不足 - CPU設定を使用")
+                return GEMMA2B_CPU_SAFE_CONFIG
+            elif gpu_available < 4.0:
+                print("⚠️ 基本的なVRAMも不足 - 緊急CPU設定を使用")
+                return EMERGENCY_CPU_CONFIG
+            else:
+                # GPU使用可能
+                if target_model == "gemma-2b-it":
+                    return GEMMA2B_TEST_CONFIG
+                else:
+                    return TEST_CONFIG
+        else:
+            return get_low_vram_config(target_model)
+            
+    except Exception as e:
+        print(f"⚠️ メモリチェックエラー: {e}")
+        return EMERGENCY_CPU_CONFIG
