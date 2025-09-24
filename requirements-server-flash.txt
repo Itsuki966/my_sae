@@ -1,0 +1,3 @@
+# Memory optimization (Linux/CUDA only)
+# Note: Install with --no-build-isolation due to PyTorch dependency
+# flash-attn>=2.0.0
