@@ -47,13 +47,31 @@ poetry run pip install -r requirements-server.txt
 poetry run python -c "import flash_attn; print(f'flash-attn {flash_attn.__version__} ready')"
 ```
 
-#### トラブルシューティング
+#### flash-attn手動インストール（セットアップスクリプトが失敗した場合）
 ```bash
-# flash-attnインストールが失敗した場合
+# 方法1: ビルド分離を無効にしてインストール（推奨）
 poetry run pip install flash-attn --no-build-isolation
 
-# 依存関係の競合がある場合
-poetry run pip install flash-attn --force-reinstall --no-deps
+# 方法2: 依存関係チェックを無効にしてインストール
+poetry run pip install flash-attn --no-deps --force-reinstall
+
+# 方法3: キャッシュを使わずに詳細ログでインストール
+poetry run pip install flash-attn --no-cache-dir --verbose
+
+# インストール確認
+poetry run python -c "import flash_attn; print(f'flash-attn {flash_attn.__version__} ready')"
+```
+
+#### システム要件確認
+```bash
+# CUDA環境確認
+nvidia-smi
+
+# PyTorchのCUDA対応確認
+poetry run python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# CUDAバージョン確認
+poetry run python -c "import torch; print(f'CUDA version: {torch.version.cuda}')"
 ```
 
 **重要な注意点**:
