@@ -41,7 +41,8 @@ bitsandbytes = {version = "^0.47.0", platform = "linux"}
 [tool.poetry.group.server.dependencies]
 # --- サーバー環境専用ライブラリ ---
 # メモリ効率化のためのflash attention (Linux/CUDA環境専用)
-flash-attn = ">=2.0.0"
+# 注意: flash-attnはPyTorchに依存するため、手動インストールが必要
+# flash-attn = ">=2.0.0"  # コメントアウト - 手動インストール推奨
 
 [tool.poetry.group.dev.dependencies]
 # --- ローカルでの開発・分析・デバッグでのみ使うライブラリ ---

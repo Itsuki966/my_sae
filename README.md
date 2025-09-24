@@ -30,17 +30,30 @@ pip install -r requirements.txt
 ### サーバー環境（Linux/CUDA環境）
 
 ```bash
-# 基本依存関係のインストール
+# 1. 基本依存関係のインストール（PyTorchを含む）
 poetry install
 
-# flash-attnを含むサーバー専用依存関係のインストール
-poetry install --with server
+# 2. flash-attnの手動インストール（PyTorchインストール後）
+poetry run pip install flash-attn
 
-# または個別インストール
-poetry add flash-attn --group server
+# またはpoetry環境内で直接インストール
+poetry shell
+pip install flash-attn
 ```
 
-**注意**: flash-attnはLinux+CUDA環境でのみ動作します。Mac環境では自動的にスキップされます。
+**重要な注意点**:
+- flash-attnはPyTorchに依存するため、PyTorchのインストール後に手動でインストールする必要があります
+- flash-attnはLinux+CUDA環境でのみ動作します
+- Mac環境ではインストールできません（CUDAサポートが必要）
+
+**flash-attnインストール確認**:
+```bash
+# インストール確認
+poetry run python -c "import flash_attn; print('flash-attn available')"
+
+# バージョン確認
+poetry run python -c "import flash_attn; print(flash_attn.__version__)"
+```
 
 ## メインスクリプトの使用方法
 
