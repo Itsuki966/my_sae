@@ -1,0 +1,4 @@
+# Git attributes for SAE project
+# シェルスクリプトに実行権限を付与
+*.sh text eol=lf
+setup_server.sh chmod=+x
