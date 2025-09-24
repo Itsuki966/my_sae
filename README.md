@@ -17,6 +17,8 @@ LLMの迎合性（sycophancy）を分析し、SAE（Sparse Autoencoder）を使�
 - Python 3.10+
 - Poetry または pip を使用した依存関係管理
 
+### ローカル環境（Mac/開発用）
+
 ```bash
 # Poetry使用（推奨）
 poetry install
@@ -24,6 +26,21 @@ poetry install
 # pip使用
 pip install -r requirements.txt
 ```
+
+### サーバー環境（Linux/CUDA環境）
+
+```bash
+# 基本依存関係のインストール
+poetry install
+
+# flash-attnを含むサーバー専用依存関係のインストール
+poetry install --with server
+
+# または個別インストール
+poetry add flash-attn --group server
+```
+
+**注意**: flash-attnはLinux+CUDA環境でのみ動作します。Mac環境では自動的にスキップされます。
 
 ## メインスクリプトの使用方法
 
