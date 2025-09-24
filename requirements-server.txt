@@ -24,3 +24,6 @@ requests>=2.31.0
 # Optional server enhancements
 sentence-transformers>=2.2.0
 scikit-learn>=1.3.0
+
+# Memory optimization (Linux/CUDA only)
+flash-attn>=2.0.0
