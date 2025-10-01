@@ -25,6 +25,13 @@ class ModelConfig:
     offload_to_cpu: bool = False    # 使用していない層をCPUにオフロードするか
     offload_to_disk: bool = False   # 使用していない層をディスクにオフロードするか
     
+    # 追加メモリ最適化設定（CUDA 9.1環境対応）
+    use_gradient_checkpointing: bool = True   # グラデーション checkpointing
+    attn_implementation: str = "eager"        # Attention実装（"eager", "flash_attention_2"）
+    torch_compile: bool = False               # torch.compile使用（CUDA 11.6+で推奨）
+    memory_fraction: float = 0.8              # GPU メモリ使用率制限
+    enable_memory_efficient_attention: bool = True  # PyTorch native attention最適化
+    
 @dataclass
 class GenerationConfig:
     """テキスト生成関連の設定"""

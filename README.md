@@ -75,8 +75,9 @@ poetry run python -c "import torch; print(f'CUDA version: {torch.version.cuda}')
 ```
 
 **重要な注意点**:
-- flash-attnはLinux+CUDA環境でのみ動作
-- PyTorchとCUDAバージョンの互換性が重要
+- **flash-attn要件**: CUDA 11.7+ が必要（CUDA 9.1などの古いバージョンでは使用不可）
+- **CUDA 9.1環境**: flash-attnの代わりに代替メモリ最適化を自動適用
+- **自動対応**: セットアップスクリプトがCUDAバージョンを自動検出し、最適な設定を適用
 - Mac環境では自動的にスキップされます
 
 ## メインスクリプトの使用方法
