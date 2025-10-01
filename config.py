@@ -502,7 +502,14 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
         device_map="auto",
         max_memory_gb=8.0,      # VRAM制限を8GBに設定
         offload_to_cpu=True,    # 不足時はCPUにオフロード
-        offload_to_disk=True    # 更に不足時はディスクに
+        offload_to_disk=True,   # 更に不足時はディスクに
+        
+        # 追加メモリ最適化設定
+        use_gradient_checkpointing=True,         # gradient checkpointing有効
+        attn_implementation="eager",             # CUDA 9.1対応attention
+        torch_compile=False,                     # 古いCUDA環境では無効
+        memory_fraction=0.7,                     # Gemma-2B用にメモリ使用率を制限
+        enable_memory_efficient_attention=True   # PyTorch最適化attention
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
@@ -529,7 +536,14 @@ GEMMA2B_PROD_CONFIG = ExperimentConfig(
         device_map="auto",       # 自動デバイス配置
         max_memory_gb=8.0,       # VRAM制限を8GBに設定
         offload_to_cpu=True,     # 未使用層をCPUにオフロード
-        offload_to_disk=True     # 更に不足時はディスクに
+        offload_to_disk=True,    # 更に不足時はディスクに
+        
+        # 追加メモリ最適化設定
+        use_gradient_checkpointing=True,         # gradient checkpointing有効
+        attn_implementation="eager",             # CUDA 9.1対応attention
+        torch_compile=False,                     # 古いCUDA環境では無効
+        memory_fraction=0.7,                     # Gemma-2B用にメモリ使用率を制限
+        enable_memory_efficient_attention=True   # PyTorch最適化attention
     ),
     data=DataConfig(sample_size=1000),
     generation=GenerationConfig(
@@ -597,6 +611,40 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
     generation=GenerationConfig(max_new_tokens=10, temperature=0.2, top_k=50)
+)
+
+# Gemma-2Bメモリ最適化設定（CUDA 9.1環境対応）
+GEMMA2B_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2b-it",
+        sae_release="gemma-2b-it-res-jb",
+        sae_id="blocks.12.hook_resid_post", 
+        device="auto",
+        use_accelerate=True,
+        use_fp16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        max_memory_gb=4.0,       # より厳しいメモリ制限
+        offload_to_cpu=True,
+        offload_to_disk=True,
+        
+        # 追加メモリ最適化設定（最大効率化）
+        use_gradient_checkpointing=True,
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.6,     # より厳しい制限（60%）
+        enable_memory_efficient_attention=True
+    ),
+    data=DataConfig(sample_size=500),  # 中程度のサンプル数
+    generation=GenerationConfig(
+        max_new_tokens=5,
+        temperature=0.1,
+        do_sample=True,
+        top_p=0.95,
+        top_k=50
+    ),
+    analysis=AnalysisConfig(top_k_features=20),
+    debug=DebugConfig(verbose=True, show_prompts=False, show_responses=False)
 )
 
 # 設定を環境に応じて自動選択する関数

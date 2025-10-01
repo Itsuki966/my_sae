@@ -59,7 +59,7 @@ from config import (
     ExperimentConfig, DEFAULT_CONFIG, 
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
     TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
-    GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG
+    GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG, GEMMA2B_MEMORY_OPTIMIZED_CONFIG
 )
 
 class SycophancyAnalyzer:
@@ -1562,9 +1562,9 @@ def parse_arguments():
     
     parser.add_argument(
         '--mode', '-m',
-        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'llama3-memory', 'gemma-2b-test', 'gemma-2b-prod', 'auto'],
+        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'llama3-memory', 'gemma-2b-test', 'gemma-2b-prod', 'gemma-2b-memory', 'auto'],
         default='auto',
-        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), llama3-memory(Llama3メモリ効率化), gemma-2b-test(Gemma-2Bテスト), gemma-2b-prod(Gemma-2B本番), auto(環境自動選択)'
+        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), llama3-memory(Llama3メモリ効率化), gemma-2b-test(Gemma-2Bテスト), gemma-2b-prod(Gemma-2B本番), gemma-2b-memory(Gemma-2Bメモリ最適化), auto(環境自動選択)'
     )
     
     parser.add_argument(
@@ -1639,6 +1639,9 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
     elif mode == 'gemma-2b-prod':
         config = GEMMA2B_PROD_CONFIG
         print("💎 Gemma-2B 本番モード（大規模実験）")
+    elif mode == 'gemma-2b-memory':
+        config = GEMMA2B_MEMORY_OPTIMIZED_CONFIG
+        print("🎯 Gemma-2B メモリ最適化モード（CUDA 9.1対応）")
     elif mode == 'auto':
         config = get_auto_config()
         print("⚙️ 環境自動選択モード")

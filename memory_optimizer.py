@@ -21,7 +21,7 @@ class MemoryOptimizer:
         except ImportError:
             return False
     
-    def get_memory_config(self) -> Dict[str, Any]:
+    def get_memory_config(self, model_name: str = "default") -> Dict[str, Any]:
         """環境に応じたメモリ最適化設定を返す"""
         config = {
             # 基本設定
@@ -41,6 +41,23 @@ class MemoryOptimizer:
             "pad_token_id": None,
         }
         
+        # Gemma-2B特化の最適化
+        if "gemma" in model_name.lower():
+            config.update({
+                "max_memory_per_gpu": "4GB",  # Gemma-2Bはより少ないメモリで動作
+                "memory_fraction": 0.7,       # メモリ使用率をより制限
+                "offload_to_cpu": True,       # 積極的にCPUオフロード
+                "use_sequential_cpu_offload": True,  # シーケンシャルオフロード
+                "enable_cpu_offload": True,   # CPU オフロード有効化
+            })
+            print("🎯 Gemma-2B specific optimizations applied")
+        elif "llama" in model_name.lower():
+            config.update({
+                "max_memory_per_gpu": "8GB",  # Llamaは少し多めのメモリ
+                "memory_fraction": 0.8,
+            })
+            print("🦙 Llama specific optimizations applied")
+        
         if self.flash_attn_available:
             config["attn_implementation"] = "flash_attention_2"
         else:
@@ -50,7 +67,9 @@ class MemoryOptimizer:
     
     def optimize_model_loading(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
         """モデル読み込み時の最適化設定"""
-        memory_config = self.get_memory_config()
+        # モデル名を取得してモデル特化の最適化を適用
+        model_name = model_config.get("name", "default")
+        memory_config = self.get_memory_config(model_name)
         
         # 既存設定に最適化設定をマージ
         optimized_config = {**model_config, **memory_config}
@@ -76,6 +95,29 @@ class MemoryOptimizer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             print("🧹 GPU cache cleared")
+    
+    def optimize_for_gemma2b(self) -> Dict[str, Any]:
+        """Gemma-2B特化のメモリ最適化設定"""
+        config = self.get_memory_config("gemma-2b-it")
+        
+        # Gemma-2B追加最適化
+        gemma_specific = {
+            # モデルサイズに適した設定
+            "max_memory": {"0": "4GB"},  # GPU 0に4GB制限
+            "low_cpu_mem_usage": True,
+            "use_safetensors": True,
+            
+            # 生成最適化
+            "pad_token_id": 0,  # Gemmaのpad token
+            "eos_token_id": 1,  # Gemmaのeos token
+            
+            # バッチ処理最適化
+            "batch_size": 1,    # メモリ効率重視でバッチサイズ1
+            "gradient_accumulation_steps": 4,  # グラデーション蓄積
+        }
+        
+        config.update(gemma_specific)
+        return config
 
 
 def get_cuda_optimized_config() -> Dict[str, Any]:
@@ -89,6 +131,20 @@ def get_cuda_optimized_config() -> Dict[str, Any]:
     }
     
     return optimizer.optimize_model_loading(base_config)
+
+
+def get_gemma2b_optimized_config() -> Dict[str, Any]:
+    """Gemma-2B特化の最適化設定を返す"""
+    optimizer = MemoryOptimizer()
+    
+    base_config = {
+        "name": "gemma-2b-it",
+        "use_fp16": True,
+        "max_memory_gb": 4,  # Gemma-2B用に制限
+        "device": "cuda" if torch.cuda.is_available() else "cpu"
+    }
+    
+    return optimizer.optimize_for_gemma2b()
 
 
 # 環境情報の表示
