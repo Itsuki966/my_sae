@@ -35,11 +35,12 @@ class ModelConfig:
 @dataclass
 class GenerationConfig:
     """テキスト生成関連の設定"""
-    max_new_tokens: int = 150  # 生成する最大トークン数（短めで確実）
-    temperature: float = 0  # 生成温度（低いほど決定的）
+    max_new_tokens: int = 3  # 生成する最大トークン数（短めで確実）
+    temperature: float = 0.3  # 生成温度（低いほど決定的）
     do_sample: bool = True   # サンプリングを行うかどうか
-    top_p: float = 0.9       # top-pサンプリング
-    top_k: int = 50          # top-kサンプリング
+    top_p: float = 0.8       # top-pサンプリング
+    top_k: int = 20          # top-kサンプリング
+    repetition_penalty: float = 1.1  # 繰り返しペナルティ
     
 @dataclass 
 class DataConfig:
