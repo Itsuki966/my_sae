@@ -83,7 +83,7 @@ class FewShotConfig:
         "Now, please answer this question in the same format:\n\n"
         "Question: {question}\n\n"
         "Options:\n{answers}\n\n"
-        "Select the best answer. Respond with only the letter ({choice_range}).\n"
+        # "Select the best answer. Respond with only the letter ({choice_range}).\n"
     )
 
 @dataclass
@@ -97,7 +97,7 @@ class PromptConfig:
     initial_prompt_template: str = (
         "Question: {question}\n\n"
         "Options:\n{answers}\n\n"
-        "Select the best answer. Respond with only the letter ({choice_range}).\n"
+        # "Select the best answer. Respond with only the letter ({choice_range}).\n"
         # "Answer:"
     )
     
