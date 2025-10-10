@@ -374,7 +374,7 @@ MAC_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=5, temperature=0.0, top_k=50),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -390,7 +390,7 @@ LIGHTWEIGHT_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.1, top_k=50),  # トークン数を増やし、温度を上げる
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -407,11 +407,12 @@ TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=100,      # 推論に十分なトークン数
-        temperature=0.2,        # 適度な探索性
+        max_new_tokens=3,
+        temperature=0.3,
         do_sample=True,
-        top_p=0.9,
-        top_k=50
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
@@ -426,11 +427,12 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=100,      # 適度に制限（質問繰り返し防止）
-        temperature=0.7,        # 創造性と安定性のバランス
-        do_sample=True,         # サンプリングを有効
-        top_p=0.85,             # 適度な制限で品質向上
-        top_k=50                # top-kサンプリング
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
@@ -453,11 +455,12 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=20),  # 軽量テスト
     generation=GenerationConfig(
-        max_new_tokens=15,       # トークン数を制限
-        temperature=0.3,         # 低温度で安定性重視
+        max_new_tokens=3,
+        temperature=0.3,
         do_sample=True,
-        top_p=0.9,
-        top_k=50
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=20),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
@@ -480,11 +483,12 @@ GEMMA2B_CPU_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=50,      # CPU環境でも実行可能
+        max_new_tokens=3,
         temperature=0.3,
         do_sample=True,
-        top_p=0.9,
-        top_k=50
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
@@ -514,11 +518,12 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
-        max_new_tokens=100,      # 適度に制限（質問繰り返し防止）
-        temperature=0.7,        # 創造性と安定性のバランス
-        do_sample=True,         # サンプリングを有効
-        top_p=0.85,             # 適度な制限で品質向上
-        top_k=50                # top-kサンプリング
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
@@ -548,11 +553,12 @@ GEMMA2B_PROD_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=1000),
     generation=GenerationConfig(
-        max_new_tokens=5,      # Gemma-2Bでは短い応答
-        temperature=0.1,       # 決定的な生成
-        do_sample=True, 
-        top_p=0.95,
-        top_k=50
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
@@ -571,7 +577,7 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=200),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.0, top_k=50),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
@@ -591,11 +597,12 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=1000),
     generation=GenerationConfig(
-        max_new_tokens=5,      # Llama3では短い応答
-        temperature=0.1,       # 決定的な生成
-        do_sample=True, 
-        top_p=0.95,
-        top_k=50
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
@@ -611,7 +618,7 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.2, top_k=50)
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1)
 )
 
 # Gemma-2Bメモリ最適化設定（CUDA 9.1環境対応）
@@ -638,11 +645,12 @@ GEMMA2B_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=500),  # 中程度のサンプル数
     generation=GenerationConfig(
-        max_new_tokens=5,
-        temperature=0.1,
+        max_new_tokens=3,
+        temperature=0.3,
         do_sample=True,
-        top_p=0.95,
-        top_k=50
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=20),
     debug=DebugConfig(verbose=True, show_prompts=False, show_responses=False)
@@ -695,11 +703,12 @@ GEMMA2B_CPU_SAFE_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=3),  # 更に少なく
     generation=GenerationConfig(
-        max_new_tokens=20,      # 短く制限
-        temperature=0.1,        # 決定的
+        max_new_tokens=3,
+        temperature=0.3,
         do_sample=True,
-        top_p=0.9,
-        top_k=50
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=5),  # 最小限
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
@@ -719,7 +728,7 @@ EMERGENCY_CPU_CONFIG = ExperimentConfig(
         offload_to_disk=True
     ),
     data=DataConfig(sample_size=3),
-    generation=GenerationConfig(max_new_tokens=10, temperature=0.0),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
     analysis=AnalysisConfig(top_k_features=5),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
