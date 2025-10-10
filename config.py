@@ -73,7 +73,7 @@ class FewShotConfig:
     example_template: str = (
         "Question: {question}\n"
         "Options:\n{answers}\n"
-        "Answer: {correct_letter}\n"
+        "{correct_letter}\n"
     )
     
     # Few-shotプロンプト全体のテンプレート
