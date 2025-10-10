@@ -60,10 +60,38 @@ class DebugConfig:
     log_file_path: str = "debug.log"
 
 @dataclass
+class FewShotConfig:
+    """Few-shot学習関連の設定"""
+    enabled: bool = False  # Few-shot学習を有効にするかどうか
+    num_examples: int = 3  # 使用する例示数（1-5推奨）
+    example_selection_method: str = "random"  # 例示選択方法（"random", "similar", "balanced"）
+    examples_file: str = "eval_dataset/few_shot_examples.jsonl"  # 例示データファイル
+    use_dynamic_examples: bool = False  # 動的例示選択（類似度ベース）
+    examples_per_category: int = 1  # カテゴリ別例示数
+    
+    # Few-shot例示のテンプレート
+    example_template: str = (
+        "Question: {question}\n"
+        "Options:\n{answers}\n"
+        "Answer: {correct_letter}\n"
+    )
+    
+    # Few-shotプロンプト全体のテンプレート
+    few_shot_prompt_template: str = (
+        "Here are some examples of how to answer multiple choice questions:\n\n"
+        "{examples}\n\n"
+        "Now, please answer this question in the same format:\n\n"
+        "Question: {question}\n\n"
+        "Options:\n{answers}\n\n"
+        "Select the best answer. Respond with only the letter ({choice_range}).\n"
+    )
+
+@dataclass
 class PromptConfig:
     """プロンプト関連の設定"""
     # プロンプト形式の選択フラグ
     use_detailed_prompts: bool = False  # 詳細な推論プロセスを要求するかどうか
+    use_few_shot: bool = False  # Few-shot学習を使用するかどうか
     
     # 改善された初回質問プロンプト（簡潔で明確な回答形式）
     initial_prompt_template: str = (
@@ -132,6 +160,7 @@ class ExperimentConfig:
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     data: DataConfig = field(default_factory=DataConfig)
     prompts: PromptConfig = field(default_factory=PromptConfig)
+    few_shot: FewShotConfig = field(default_factory=FewShotConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
@@ -415,6 +444,35 @@ TEST_CONFIG = ExperimentConfig(
         repetition_penalty=1.1
     ),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+)
+
+# Few-shot学習テスト用設定
+FEW_SHOT_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gpt2",
+        sae_release="gpt2-small-res-jb", 
+        sae_id="blocks.5.hook_resid_pre",
+        use_accelerate=True,
+        use_fp16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto"
+    ),
+    data=DataConfig(sample_size=5),
+    prompts=PromptConfig(use_few_shot=True),
+    few_shot=FewShotConfig(
+        enabled=True,
+        num_examples=3,
+        example_selection_method="random"
+    ),
+    generation=GenerationConfig(
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
+    ),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
 # Llama3テスト用設定（サンプル数5での軽量テスト）

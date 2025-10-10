@@ -58,7 +58,7 @@ except ImportError:
 from config import (
     ExperimentConfig, DEFAULT_CONFIG, 
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
-    TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
+    TEST_CONFIG, FEW_SHOT_TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
     GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG, GEMMA2B_MEMORY_OPTIMIZED_CONFIG
 )
 
@@ -87,6 +87,163 @@ class SycophancyAnalyzer:
         print(f"✅ SycophancyAnalyzer初期化完了")
         print(f"📊 使用設定: {self.config.model.name}")
         print(f"🔧 デバイス: {self.device}")
+        
+        # Few-shot学習用の例示データ
+        self.few_shot_examples = None
+        if self.config.few_shot.enabled:
+            print("🎯 Few-shot学習が有効です")
+            self.load_few_shot_examples()
+    
+    def load_few_shot_examples(self) -> List[Dict[str, Any]]:
+        """
+        Few-shot学習用の例示データを読み込み
+        
+        Returns:
+            例示データのリスト
+        """
+        try:
+            examples = []
+            with open(self.config.few_shot.examples_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():  # 空行をスキップ
+                        examples.append(json.loads(line.strip()))
+            
+            if self.config.debug.verbose:
+                print(f"📚 Few-shot例示データを読み込み: {len(examples)}件")
+                if examples:
+                    print(f"例示データ構造: {list(examples[0].keys())}")
+            
+            self.few_shot_examples = examples
+            return examples
+            
+        except FileNotFoundError:
+            print(f"⚠️ Few-shot例示ファイルが見つかりません: {self.config.few_shot.examples_file}")
+            self.few_shot_examples = []
+            return []
+        except Exception as e:
+            print(f"❌ Few-shot例示データ読み込みエラー: {e}")
+            self.few_shot_examples = []
+            return []
+    
+    def select_few_shot_examples(self, current_question: str = None, num_examples: int = None) -> List[Dict[str, Any]]:
+        """
+        Few-shot学習用の例示を選択
+        
+        Args:
+            current_question: 現在の質問（類似度ベース選択時に使用）
+            num_examples: 選択する例示数
+            
+        Returns:
+            選択された例示データのリスト
+        """
+        if not self.few_shot_examples:
+            return []
+        
+        if num_examples is None:
+            num_examples = self.config.few_shot.num_examples
+            
+        # 利用可能な例示数を超えないように制限
+        num_examples = min(num_examples, len(self.few_shot_examples))
+        
+        if self.config.few_shot.example_selection_method == "random":
+            # ランダム選択
+            np.random.seed(self.config.data.random_seed)
+            selected = np.random.choice(
+                self.few_shot_examples, 
+                size=num_examples, 
+                replace=False
+            ).tolist()
+        elif self.config.few_shot.example_selection_method == "balanced":
+            # バランス選択（正解が均等になるように）
+            # 現在はシンプルにランダム選択
+            np.random.seed(self.config.data.random_seed)
+            selected = np.random.choice(
+                self.few_shot_examples, 
+                size=num_examples, 
+                replace=False
+            ).tolist()
+        else:
+            # デフォルトは最初のnum_examples個
+            selected = self.few_shot_examples[:num_examples]
+        
+        if self.config.debug.verbose:
+            print(f"🎯 Few-shot例示を選択: {len(selected)}件")
+            for i, example in enumerate(selected):
+                print(f"  例示{i+1}: {example['question'][:50]}... → {example['correct_letter']}")
+        
+        return selected
+    
+    def generate_few_shot_examples_text(self, examples: List[Dict[str, Any]]) -> str:
+        """
+        Few-shot例示テキストを生成
+        
+        Args:
+            examples: 例示データのリスト
+            
+        Returns:
+            フォーマットされた例示テキスト
+        """
+        if not examples:
+            return ""
+        
+        example_texts = []
+        for example in examples:
+            # 例示テンプレートを使用してフォーマット
+            example_text = self.config.few_shot.example_template.format(
+                question=example['question'],
+                answers=example['answers'], 
+                correct_letter=example['correct_letter']
+            )
+            example_texts.append(example_text)
+        
+        return "\n\n".join(example_texts)
+    
+    def create_few_shot_prompt(self, question: str, answers: str, choice_range: str) -> str:
+        """
+        Few-shotプロンプトを作成
+        
+        Args:
+            question: 質問文
+            answers: 選択肢
+            choice_range: 選択肢範囲（例："A-E"）
+            
+        Returns:
+            Few-shotプロンプト
+        """
+        if not self.config.few_shot.enabled or not self.few_shot_examples:
+            # Few-shotが無効、または例示がない場合は通常のプロンプト
+            return self.config.prompts.initial_prompt_template.format(
+                question=question,
+                answers=answers,
+                choice_range=choice_range
+            )
+        
+        # Few-shot例示を選択
+        selected_examples = self.select_few_shot_examples(current_question=question)
+        
+        if not selected_examples:
+            # 例示が選択されなかった場合は通常のプロンプト
+            return self.config.prompts.initial_prompt_template.format(
+                question=question,
+                answers=answers,
+                choice_range=choice_range
+            )
+        
+        # 例示テキストを生成
+        examples_text = self.generate_few_shot_examples_text(selected_examples)
+        
+        # Few-shotプロンプトテンプレートを使用
+        few_shot_prompt = self.config.few_shot.few_shot_prompt_template.format(
+            examples=examples_text,
+            question=question,
+            answers=answers,
+            choice_range=choice_range
+        )
+        
+        if self.config.debug.verbose:
+            print(f"🎯 Few-shotプロンプトを生成 (例示数: {len(selected_examples)})")
+        
+        return few_shot_prompt
     
     def get_current_sae_device(self) -> str:
         """SAEの現在のデバイスを取得（Llama3でのメモリ管理に必要）"""
@@ -1074,8 +1231,15 @@ class SycophancyAnalyzer:
             # 選択肢の文字とプロンプト範囲を抽出
             valid_choices, choice_range = self.extract_choice_letters_from_answers(answers)
             
-            # 初回プロンプトの作成（動的選択肢対応）
-            if 'llama' in self.config.model.name.lower():
+            # 初回プロンプトの作成（Few-shot学習とプロンプト種類の動的選択対応）
+            if self.config.prompts.use_few_shot and self.config.few_shot.enabled:
+                # Few-shotプロンプトを使用
+                initial_prompt = self.create_few_shot_prompt(
+                    question=question,
+                    answers=answers, 
+                    choice_range=choice_range
+                )
+            elif 'llama' in self.config.model.name.lower():
                 # Llama3専用プロンプトを使用
                 initial_prompt = self.config.prompts.llama3_initial_prompt_template.format(
                     question=question,
