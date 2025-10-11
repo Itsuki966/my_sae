@@ -380,7 +380,123 @@ class SycophancyAnalyzer:
             return False
 
     def setup_models_with_memory_management(self):
-        """メモリ効率を重視したモデル読み込み（Llama3用）"""
+        """メモリ効率を重視したモデル読み込み（Gemma-2B/Llama3用）"""
+        try:
+            print("🚀 メモリ効率的なモデル読み込みを開始...")
+            
+            # メモリクリア
+            force_clear_gpu_cache()
+            
+            # Gemma-2B用の特別処理
+            if 'gemma' in self.config.model.name.lower():
+                return self._setup_gemma_models()
+            
+            # Llama3用の処理
+            elif 'llama' in self.config.model.name.lower():
+                return self._setup_llama_models()
+            
+            # その他のモデル（GPT-2 medium/large等）
+            else:
+                return self.setup_models_simple()
+                
+        except Exception as e:
+            print(f"❌ メモリ効率的読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _setup_gemma_models(self):
+        """Gemma-2B専用のモデル読み込み"""
+        try:
+            print("💎 Gemma-2B 専用読み込み開始...")
+            
+            # 8bit量子化でモデルを読み込み
+            self.model = HookedSAETransformer.from_pretrained(
+                self.config.model.name,
+                center_writing_weights=False,
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
+                device_map=self.config.model.device_map,
+                load_in_8bit=self.config.model.load_in_8bit,
+                max_memory={0: f"{self.config.model.max_memory_gb}GB"} if self.config.model.max_memory_gb else None,
+                offload_folder="./offload" if self.config.model.offload_to_disk else None,
+            )
+            
+            print(f"✅ {self.config.model.name} を読み込み完了")
+            
+            # SAEの読み込み
+            print("🔄 SAE読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device=str(self.model.device)
+            )
+            
+            if isinstance(sae_result, tuple):
+                self.sae = sae_result[0]
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
+            else:
+                self.sae = sae_result
+                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
+            
+            self.sae_device = str(self.sae.device)
+            
+            # Tokenizerの取得
+            self.tokenizer = self.model.tokenizer
+            
+            print(f"🔧 モデル配置先: {self.model.device}")
+            print(f"🔧 SAE配置先: {self.sae_device}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Gemma-2B読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _setup_llama_models(self):
+        """Llama3専用のモデル読み込み"""
+        try:
+            print("🦙 Llama3 専用読み込み開始...")
+            
+            # Llama3の読み込み処理（既存のコードを使用）
+            self.model = HookedSAETransformer.from_pretrained(
+                self.config.model.name,
+                center_writing_weights=False,
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
+                device_map=self.config.model.device_map,
+                max_memory={0: f"{self.config.model.max_memory_gb}GB"} if self.config.model.max_memory_gb else None,
+                offload_folder="./offload" if self.config.model.offload_to_disk else None,
+            )
+            
+            print(f"✅ {self.config.model.name} を読み込み完了")
+            
+            # SAEの読み込み
+            print("🔄 SAE読み込み中...")
+            sae_result = SAE.from_pretrained(
+                release=self.config.model.sae_release,
+                sae_id=self.config.model.sae_id,
+                device=str(self.model.device)
+            )
+            
+            if isinstance(sae_result, tuple):
+                self.sae = sae_result[0]
+            else:
+                self.sae = sae_result
+            
+            self.sae_device = str(self.sae.device)
+            self.tokenizer = self.model.tokenizer
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Llama3読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def setup_models_simple(self):
         """シンプルなモデル読み込み（gpt2, gpt2-medium用）"""
         try:
@@ -426,137 +542,7 @@ class SycophancyAnalyzer:
             import traceback
             traceback.print_exc()
             return False
-        
-        try:
-            print("🚀 メモリ効率的なモデル読み込みを開始...")
-            
-            # メモリクリア
-            self.optimize_memory_usage()
-            initial_memory = self.get_model_memory_footprint()
-            print(f"📊 初期メモリ状態: {initial_memory}")
-            
-            # GPUメモリ確認
-            if torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
-                print(f"🔧 GPU総メモリ: {total_memory:.2f}GB")
-                # 利用可能メモリの70%を上限とする
-                safe_memory = min(total_memory * 0.7, 12.0)
-            else:
-                safe_memory = 8.0
-            
-            print(f"🔧 安全メモリ制限: {safe_memory:.2f}GB")
-            
-            # Llama3の場合は段階的読み込み
-            if 'llama' in self.config.model.name.lower():
-                print("🦙 Llama3用段階的読み込みモード")
-                
-                # まずCPUで読み込み
-                self.model = HookedSAETransformer.from_pretrained(
-                    self.config.model.name,
-                    device_map="cpu",  # 強制的にCPU
-                    torch_dtype=torch.float16,
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
-                    center_writing_weights=False,
-                )
-                
-                print("✅ CPUでの読み込み完了")
-                
-                # メモリ状況に応じてGPUに部分移動
-                if torch.cuda.is_available() and safe_memory > 6.0:
-                    print("🔄 GPUに部分的に移動中...")
-                    
-                    # エンベディング層をGPUに移動
-                    if hasattr(self.model, 'embed'):
-                        self.model.embed = self.model.embed.to('cuda:0')
-                    
-                    # 出力層をGPUに移動
-                    if hasattr(self.model, 'unembed'):
-                        self.model.unembed = self.model.unembed.to('cuda:0')
-                    
-                    # 一部のTransformerレイヤーをGPUに移動（メモリに応じて調整）
-                    if hasattr(self.model, 'blocks'):
-                        max_blocks_on_gpu = min(8, len(self.model.blocks))  # 最大8層まで
-                        for i in range(max_blocks_on_gpu):
-                            try:
-                                self.model.blocks[i] = self.model.blocks[i].to('cuda:0')
-                                # メモリ使用量をチェック
-                                current_memory = torch.cuda.memory_allocated(0) / 1e9
-                                if current_memory > safe_memory:
-                                    print(f"⚠️ メモリ制限に達したため、{i}層までGPUに配置")
-                                    break
-                                print(f"✅ Layer {i} をGPUに移動")
-                            except Exception as layer_error:
-                                print(f"⚠️ Layer {i} のGPU移動失敗: {layer_error}")
-                                break
-                    
-                    print(f"✅ ハイブリッド配置完了 (GPU使用メモリ: {torch.cuda.memory_allocated(0)/1e9:.2f}GB)")
-                else:
-                    print("🔧 CPUモードで継続")
-            else:
-                # gpt2などの小さなモデルは通常通り
-                self.model = HookedSAETransformer.from_pretrained(
-                    self.config.model.name,
-                    device="auto",
-                    center_writing_weights=False,
-                )
-                print(f"✅ モデル {self.config.model.name} を読み込み完了")
-            
-            # SAEの読み込み（メモリ効率重視）
-            print("🔄 SAEを読み込み中...")
-            sae_result = SAE.from_pretrained(
-                release=self.config.model.sae_release,
-                sae_id=self.config.model.sae_id,
-                device='cpu'  # 最初はCPUで読み込み
-            )
-            
-            if isinstance(sae_result, tuple):
-                self.sae = sae_result[0]
-                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了 (tuple形式)")
-            else:
-                self.sae = sae_result
-                print(f"✅ SAE {self.config.model.sae_id} を読み込み完了")
-            
-            # SAEのデバイス配置（メモリ状況に応じて）
-            if torch.cuda.is_available():
-                current_memory = torch.cuda.memory_allocated(0) / 1e9
-                if current_memory < safe_memory * 0.9:
-                    try:
-                        print("🔄 SAEをGPUに移動中...")
-                        self.sae = self.sae.to('cuda:0')
-                        self.sae_device = 'cuda:0'
-                        print("✅ SAEもGPUに配置")
-                    except Exception as sae_gpu_error:
-                        print(f"⚠️ SAEのGPU移動失敗、CPUで継続: {sae_gpu_error}")
-                        self.sae = self.sae.to('cpu')
-                        self.sae_device = 'cpu'
-                else:
-                    print("🔧 メモリ不足のためSAEをCPUに維持")
-                    self.sae = self.sae.to('cpu')
-                    self.sae_device = 'cpu'
-            else:
-                self.sae = self.sae.to('cpu')
-                self.sae_device = 'cpu'
-            
-            # Tokenizerの取得
-            self.tokenizer = self.model.tokenizer
-            
-            # Llama3での特別な設定
-            self._configure_llama3_if_needed()
-            
-            # 最終メモリ状態
-            final_memory = self.get_model_memory_footprint()
-            print(f"📊 最終メモリ状態: {final_memory}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ メモリ効率化読み込みエラー: {e}")
-            import traceback
-            traceback.print_exc()
-            print("🔄 シンプルな読み込み方法にフォールバック...")
-            return self.setup_models_simple()
-    
+
     def setup_models_simple(self):
         """シンプルなモデル読み込み方法（gpt2用）"""
         try:
