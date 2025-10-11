@@ -59,7 +59,8 @@ from config import (
     ExperimentConfig, DEFAULT_CONFIG, 
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
     TEST_CONFIG, FEW_SHOT_TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
-    GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG, GEMMA2B_MEMORY_OPTIMIZED_CONFIG
+    GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG, GEMMA2B_MEMORY_OPTIMIZED_CONFIG,
+    force_clear_gpu_cache, clear_gpu_memory
 )
 
 class SycophancyAnalyzer:
@@ -73,6 +74,14 @@ class SycophancyAnalyzer:
             config: 実験設定。Noneの場合はデフォルト設定を使用
         """
         self.config = config if config is not None else DEFAULT_CONFIG
+        
+        # メモリクリア実行（Gemma-2B系の場合は特に重要）
+        if "gemma" in self.config.model.name.lower():
+            print("🧹 Gemma-2B用メモリクリア実行中...")
+            success = force_clear_gpu_cache()
+            if not success and self.config.model.device in ["cuda", "auto"]:
+                print("⚠️ メモリクリア不完全 - CPU モードに変更を推奨")
+        
         self.model = None
         self.sae = None
         self.tokenizer = None
@@ -638,9 +647,16 @@ class SycophancyAnalyzer:
         
         print("🔄 モデル読み込みを開始...")
         
+        # モデル読み込み前にメモリクリア実行
+        print("🧹 モデル読み込み前メモリクリア...")
+        force_clear_gpu_cache()
+        
         # モデルサイズに応じて読み込み方法を選択
         if 'llama' in self.config.model.name.lower():
             print("🦙 Llama3検出: メモリ効率化モードを使用")
+            return self.setup_models_with_memory_management()
+        elif 'gemma' in self.config.model.name.lower():
+            print("💎 Gemma-2B検出: 強化メモリ効率化モードを使用")
             return self.setup_models_with_memory_management()
         elif self.config.model.name in ['gpt2-medium', 'gpt2-large']:
             print("📊 中規模モデル検出: メモリ効率化モードを使用")
@@ -1373,6 +1389,11 @@ class SycophancyAnalyzer:
                     progress = (i + 1) / total_items * 100
                     print(f"📊 進行状況: {i+1}/{total_items} ({progress:.1f}%)")
                 
+                # 定期的なメモリクリア（Gemma-2B等の大きなモデル用）
+                if i > 0 and i % 5 == 0 and "gemma" in self.config.model.name.lower():
+                    print("🧹 定期メモリクリア...")
+                    clear_gpu_memory()
+                
                 result = self.run_single_analysis(item)
                 if result is not None:  # Noneでない結果のみを追加
                     results.append(result)
@@ -1798,8 +1819,17 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
         config = LLAMA3_MEMORY_OPTIMIZED_CONFIG
         print("🧠 Llama3 メモリ効率化モード（accelerate使用）")
     elif mode == 'gemma-2b-test':
-        config = GEMMA2B_TEST_CONFIG
-        print("💎 Gemma-2B テストモード（サンプル数5）")
+        # 強力なメモリクリアを事前実行
+        print("🧹 メモリクリア実行中...")
+        if not force_clear_gpu_cache():
+            print("⚠️ GPU メモリクリア不完全 - より軽量設定に調整")
+            # メモリクリア不完全な場合はCPU設定に強制変更
+            from config import GEMMA2B_CPU_SAFE_CONFIG
+            config = GEMMA2B_CPU_SAFE_CONFIG
+            print("🔄 CPU安全モードに変更しました")
+        else:
+            config = GEMMA2B_TEST_CONFIG
+            print("💎 Gemma-2B テストモード（サンプル数3, メモリ強化）")
     elif mode == 'gemma-2b-prod':
         config = GEMMA2B_PROD_CONFIG
         print("💎 Gemma-2B 本番モード（大規模実験）")
