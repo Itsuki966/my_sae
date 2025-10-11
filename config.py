@@ -562,28 +562,66 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
         name="gemma-2b-it",
         sae_release="gemma-2b-it-res-jb",
         sae_id="blocks.12.hook_resid_post", 
-        device="auto",
-        # --- 量子化によるメモリ最適化 ---
-        load_in_8bit=True,  # ★★★ これが最も重要 ★★★
+        device="cuda",
         
-        # --- その他の推奨設定 ---
-        use_fp16=False,  # 量子化と併用しないためFalseに
-        low_cpu_mem_usage=True,
+        # --- 最大限の量子化とメモリ節約 ---
+        load_in_8bit=True,           # 8bit量子化
+        load_in_4bit=False,          # 4bit量子化は一旦無効（互換性問題回避）
+        use_fp16=False,              # 量子化と併用しないため無効
+        
+        # --- 積極的なオフロード設定 ---
         use_accelerate=True,
-        device_map="auto"
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        max_memory_gb=8.0,           # 8GBに制限
+        offload_to_cpu=True,         # 未使用層をCPUに
+        offload_to_disk=True,        # さらにディスクにも
+        
+        # --- 追加メモリ最適化 ---
+        use_gradient_checkpointing=True,
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.6,         # GPU使用率を60%に制限
+        enable_memory_efficient_attention=True
     ),
-    data=DataConfig(sample_size=5),
+    data=DataConfig(sample_size=3),  # サンプル数を最小に
     generation=GenerationConfig(
-        max_new_tokens=3,
+        max_new_tokens=2,            # トークン数も最小に
         temperature=0.3,
-        do_sample=True,
+        do_sample=False,             # 決定的生成でメモリ節約
         top_p=0.8,
-        top_k=20,
+        top_k=10,                    # top_kも小さく
         repetition_penalty=1.1
     ),
-    analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
-    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+    analysis=AnalysisConfig(top_k_features=5),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
 )
+#     model=ModelConfig(
+#         name="gemma-2b-it",
+#         sae_release="gemma-2b-it-res-jb",
+#         sae_id="blocks.12.hook_resid_post", 
+#         device="auto",
+#         # --- 量子化によるメモリ最適化 ---
+#         load_in_8bit=True,  # ★★★ これが最も重要 ★★★
+        
+#         # --- その他の推奨設定 ---
+#         use_fp16=False,  # 量子化と併用しないためFalseに
+#         low_cpu_mem_usage=True,
+#         use_accelerate=True,
+#         device_map="auto"
+#     ),
+#     data=DataConfig(sample_size=5),
+#     generation=GenerationConfig(
+#         max_new_tokens=3,
+#         temperature=0.3,
+#         do_sample=True,
+#         top_p=0.8,
+#         top_k=20,
+#         repetition_penalty=1.1
+#     ),
+#     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
+#     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
+# )
 
 # Gemma-2B本番用設定（大規模実行）
 GEMMA2B_PROD_CONFIG = ExperimentConfig(
