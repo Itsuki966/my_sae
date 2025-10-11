@@ -25,6 +25,10 @@ class ModelConfig:
     offload_to_cpu: bool = False    # 使用していない層をCPUにオフロードするか
     offload_to_disk: bool = False   # 使用していない層をディスクにオフロードするか
     
+    # 量子化設定（メモリ節約）
+    load_in_8bit: bool = False      # 8bit量子化を使用するか
+    load_in_4bit: bool = False      # 4bit量子化を使用するか
+    
     # 追加メモリ最適化設定（CUDA 9.1環境対応）
     use_gradient_checkpointing: bool = True   # グラデーション checkpointing
     attn_implementation: str = "eager"        # Attention実装（"eager", "flash_attention_2"）
@@ -560,25 +564,13 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
         sae_id="blocks.12.hook_resid_post", 
         device="auto",
         # --- 量子化によるメモリ最適化 ---
-        load_in_8bit=True, # ★★★ これが最も重要 ★★★
-
-        # --- その他の推奨設定 ---
-        use_fp16=False, # 量子化と併用しないためFalseに
-        low_cpu_mem_usage=True        
-        # use_accelerate=True,
-        # use_fp16=True,
-        # low_cpu_mem_usage=True,
-        # device_map="auto",
-        # max_memory_gb=8.0,      # VRAM制限を8GBに設定
-        # offload_to_cpu=True,    # 不足時はCPUにオフロード
-        # offload_to_disk=True,   # 更に不足時はディスクに
+        load_in_8bit=True,  # ★★★ これが最も重要 ★★★
         
-        # # 追加メモリ最適化設定
-        # use_gradient_checkpointing=True,         # gradient checkpointing有効
-        # attn_implementation="eager",             # CUDA 9.1対応attention
-        # torch_compile=False,                     # 古いCUDA環境では無効
-        # memory_fraction=0.7,                     # Gemma-2B用にメモリ使用率を制限
-        # enable_memory_efficient_attention=True   # PyTorch最適化attention
+        # --- その他の推奨設定 ---
+        use_fp16=False,  # 量子化と併用しないためFalseに
+        low_cpu_mem_usage=True,
+        use_accelerate=True,
+        device_map="auto"
     ),
     data=DataConfig(sample_size=5),
     generation=GenerationConfig(
