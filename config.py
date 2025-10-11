@@ -20,14 +20,10 @@ class ModelConfig:
     use_accelerate: bool = True      # accelerateライブラリを使用するか
     use_fp16: bool = True           # float16精度を使用するか（メモリ節約）
     low_cpu_mem_usage: bool = True  # CPU使用量を削減するか
-    device_map: str = "auto"        # デバイス自動配置（"auto", "sequential", "balanced"）
-    max_memory_gb: Optional[float] = None  # 最大メモリ使用量（GB）
-    offload_to_cpu: bool = False    # 使用していない層をCPUにオフロードするか
-    offload_to_disk: bool = False   # 使用していない層をディスクにオフロードするか
-    
-    # 量子化設定（メモリ節約）
-    load_in_8bit: bool = False      # 8bit量子化を使用するか
-    load_in_4bit: bool = False      # 4bit量子化を使用するか
+    device_map: str = "auto"        # デバイス自動配置（HuggingFace用、HookedSAETransformerでは未使用）
+    max_memory_gb: Optional[float] = None  # 最大メモリ使用量（HuggingFace用、HookedSAETransformerでは未使用）
+    offload_to_cpu: bool = False    # CPUオフロード（HuggingFace用、HookedSAETransformerでは未使用）
+    offload_to_disk: bool = False   # ディスクオフロード（HuggingFace用、HookedSAETransformerでは未使用）
     
     # 追加メモリ最適化設定（CUDA 9.1環境対応）
     use_gradient_checkpointing: bool = True   # グラデーション checkpointing
@@ -564,25 +560,10 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
         sae_id="blocks.12.hook_resid_post", 
         device="cuda",
         
-        # --- 最大限の量子化とメモリ節約 ---
-        load_in_8bit=True,           # 8bit量子化
-        load_in_4bit=False,          # 4bit量子化は一旦無効（互換性問題回避）
-        use_fp16=False,              # 量子化と併用しないため無効
-        
-        # --- 積極的なオフロード設定 ---
-        use_accelerate=True,
-        low_cpu_mem_usage=True,
-        device_map="auto",
-        max_memory_gb=8.0,           # 8GBに制限
-        offload_to_cpu=True,         # 未使用層をCPUに
-        offload_to_disk=True,        # さらにディスクにも
-        
-        # --- 追加メモリ最適化 ---
-        use_gradient_checkpointing=True,
-        attn_implementation="eager",
-        torch_compile=False,
-        memory_fraction=0.6,         # GPU使用率を60%に制限
-        enable_memory_efficient_attention=True
+        # --- HookedSAETransformer対応設定 ---
+        use_fp16=True,               # fp16でメモリ節約
+        use_accelerate=True,         # accelerateライブラリ使用
+        low_cpu_mem_usage=True,      # CPU メモリ使用量削減
     ),
     data=DataConfig(sample_size=3),  # サンプル数を最小に
     generation=GenerationConfig(
@@ -596,32 +577,7 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
     analysis=AnalysisConfig(top_k_features=5),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
 )
-#     model=ModelConfig(
-#         name="gemma-2b-it",
-#         sae_release="gemma-2b-it-res-jb",
-#         sae_id="blocks.12.hook_resid_post", 
-#         device="auto",
-#         # --- 量子化によるメモリ最適化 ---
-#         load_in_8bit=True,  # ★★★ これが最も重要 ★★★
-        
-#         # --- その他の推奨設定 ---
-#         use_fp16=False,  # 量子化と併用しないためFalseに
-#         low_cpu_mem_usage=True,
-#         use_accelerate=True,
-#         device_map="auto"
-#     ),
-#     data=DataConfig(sample_size=5),
-#     generation=GenerationConfig(
-#         max_new_tokens=3,
-#         temperature=0.3,
-#         do_sample=True,
-#         top_p=0.8,
-#         top_k=20,
-#         repetition_penalty=1.1
-#     ),
-#     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
-#     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
-# )
+
 
 # Gemma-2B本番用設定（大規模実行）
 GEMMA2B_PROD_CONFIG = ExperimentConfig(

@@ -410,16 +410,13 @@ class SycophancyAnalyzer:
         try:
             print("💎 Gemma-2B 専用読み込み開始...")
             
-            # 8bit量子化でモデルを読み込み
+            # HookedSAETransformer用のシンプルな読み込み
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
                 center_writing_weights=False,
                 trust_remote_code=True,
                 torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
-                device_map=self.config.model.device_map,
-                load_in_8bit=self.config.model.load_in_8bit,
-                max_memory={0: f"{self.config.model.max_memory_gb}GB"} if self.config.model.max_memory_gb else None,
-                offload_folder="./offload" if self.config.model.offload_to_disk else None,
+                device=self.config.model.device if self.config.model.device != "auto" else "cuda",
             )
             
             print(f"✅ {self.config.model.name} を読み込み完了")
@@ -450,25 +447,59 @@ class SycophancyAnalyzer:
             return True
             
         except Exception as e:
-            print(f"❌ Gemma-2B読み込みエラー: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+            print(f"❌ Gemma-2B GPU読み込みエラー: {e}")
+            print("🔄 CPUモードでのフォールバック試行中...")
+            try:
+                # CPUでフォールバック
+                self.model = HookedSAETransformer.from_pretrained(
+                    self.config.model.name,
+                    center_writing_weights=False,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float32,  # CPUでは32bit
+                    device="cpu",
+                )
+                
+                print(f"✅ {self.config.model.name} をCPUで読み込み完了")
+                
+                # SAEの読み込み
+                print("🔄 SAE読み込み中...")
+                sae_result = SAE.from_pretrained(
+                    release=self.config.model.sae_release,
+                    sae_id=self.config.model.sae_id,
+                    device="cpu"
+                )
+                
+                if isinstance(sae_result, tuple):
+                    self.sae = sae_result[0]
+                    print(f"✅ SAE {self.config.model.sae_id} をCPUで読み込み完了 (tuple形式)")
+                else:
+                    self.sae = sae_result
+                    print(f"✅ SAE {self.config.model.sae_id} をCPUで読み込み完了")
+                
+                self.sae_device = "cpu"
+                self.tokenizer = self.model.tokenizer
+                
+                print("🔧 CPUフォールバック成功")
+                return True
+                
+            except Exception as cpu_error:
+                print(f"❌ CPUフォールバックも失敗: {cpu_error}")
+                import traceback
+                traceback.print_exc()
+                return False
 
     def _setup_llama_models(self):
         """Llama3専用のモデル読み込み"""
         try:
             print("🦙 Llama3 専用読み込み開始...")
             
-            # Llama3の読み込み処理（既存のコードを使用）
+            # Llama3の読み込み処理（HookedSAETransformer用）
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
                 center_writing_weights=False,
                 trust_remote_code=True,
                 torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
-                device_map=self.config.model.device_map,
-                max_memory={0: f"{self.config.model.max_memory_gb}GB"} if self.config.model.max_memory_gb else None,
-                offload_folder="./offload" if self.config.model.offload_to_disk else None,
+                device=self.config.model.device if self.config.model.device != "auto" else "cuda",
             )
             
             print(f"✅ {self.config.model.name} を読み込み完了")
@@ -492,10 +523,44 @@ class SycophancyAnalyzer:
             return True
             
         except Exception as e:
-            print(f"❌ Llama3読み込みエラー: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+            print(f"❌ Llama3 GPU読み込みエラー: {e}")
+            print("🔄 CPUモードでのフォールバック試行中...")
+            try:
+                # CPUでフォールバック
+                self.model = HookedSAETransformer.from_pretrained(
+                    self.config.model.name,
+                    center_writing_weights=False,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float32,  # CPUでは32bit
+                    device="cpu",
+                )
+                
+                print(f"✅ {self.config.model.name} をCPUで読み込み完了")
+                
+                # SAEの読み込み
+                print("🔄 SAE読み込み中...")
+                sae_result = SAE.from_pretrained(
+                    release=self.config.model.sae_release,
+                    sae_id=self.config.model.sae_id,
+                    device="cpu"
+                )
+                
+                if isinstance(sae_result, tuple):
+                    self.sae = sae_result[0]
+                else:
+                    self.sae = sae_result
+                
+                self.sae_device = "cpu"
+                self.tokenizer = self.model.tokenizer
+                
+                print("🔧 CPUフォールバック成功")
+                return True
+                
+            except Exception as cpu_error:
+                print(f"❌ CPUフォールバックも失敗: {cpu_error}")
+                import traceback
+                traceback.print_exc()
+                return False
 
     def setup_models_simple(self):
         """シンプルなモデル読み込み（gpt2, gpt2-medium用）"""
