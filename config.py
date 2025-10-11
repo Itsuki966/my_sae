@@ -873,6 +873,41 @@ def clear_gpu_memory():
         print(f"⚠️ GPU メモリクリアでエラー: {e}")
         return False
 
+def force_clear_gpu_cache():
+    """GPUキャッシュを強制的に完全クリア"""
+    try:
+        import torch
+        import gc
+        import os
+        
+        if torch.cuda.is_available():
+            # 全てのテンソルを削除
+            for obj in gc.get_objects():
+                if torch.is_tensor(obj):
+                    if obj.is_cuda:
+                        del obj
+            
+            # PyTorchキャッシュをクリア
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            torch.cuda.synchronize()
+            
+            # ガベージコレクション強制実行
+            gc.collect()
+            
+            # 環境変数でメモリ管理を最適化
+            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+            
+            gpu_allocated = torch.cuda.memory_allocated() / 1e9
+            gpu_cached = torch.cuda.memory_reserved() / 1e9
+            print(f"🧹 強制GPU メモリクリア: 使用中 {gpu_allocated:.2f}GB, キャッシュ {gpu_cached:.2f}GB")
+            
+            return gpu_allocated < 1.0
+        return True
+    except Exception as e:
+        print(f"⚠️ GPU メモリクリアエラー: {e}")
+        return False
+
 # メモリ不足検知とフォールバック設定取得
 def get_memory_safe_config(target_model: str = "gemma-2b-it") -> ExperimentConfig:
     """メモリ状況を確認して最適な設定を取得"""
