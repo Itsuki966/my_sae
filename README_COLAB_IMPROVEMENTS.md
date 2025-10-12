@@ -60,13 +60,39 @@
 1. `launcher_colab.ipynb`をGoogle Driveにアップロード
 2. Google Colabで開く
 
-### **Step 2: 段階的実行**
+### **Step 2: データセット準備**
+
+**重要**: データセットは事前にGoogle Driveに配置してください。
+
+1. **Google Driveにフォルダ作成**
+   ```
+   /content/drive/MyDrive/eval_dataset/
+   ```
+
+2. **以下のファイルをアップロード**
+   - `are_you_sure.jsonl` (主要データセット - 必須)
+   - `answer.jsonl` (オプション)
+   - `feedback.jsonl` (オプション)
+   - `few_shot_examples.jsonl` (オプション)
+
+3. **推奨配置場所**（システムが自動検索します）
+   ```
+   /content/drive/MyDrive/eval_dataset/
+   /content/drive/MyDrive/research/sae/eval_dataset/
+   /content/drive/MyDrive/Colab Notebooks/eval_dataset/
+   /content/drive/MyDrive/sae/eval_dataset/
+   ```
+
+### **Step 3: 段階的実行**
 ```python
 # セル1を実行 - 環境検出
 run_cell_1()  # 環境構築システムの設計
 
 # セル2を実行 - リポジトリ取得  
 run_cell_2()  # Git sparse-checkout
+
+# セル2.5を実行 - データセット準備
+run_cell_2_5()  # Google Driveマウント & データセット設定
 
 # セル3を実行 - 依存関係インストール
 run_cell_3()  # 段階的インストール
@@ -115,6 +141,30 @@ run_full_diagnostic()          # 完全診断
 - 各ライブラリごとにエラーハンドリング
 - 一部失敗でも継続可能
 
+### **データセット管理戦略**
+
+#### **Google Driveマウント方式（採用）**
+- **利点**: 
+  - 認証が簡単（Google Colabと統合）
+  - 大容量ファイル対応
+  - ユーザーが既存のGoogleアカウントを使用可能
+  - データの永続化が保証される
+- **欠点**: 
+  - 初回使用時にGoogle認証が必要
+  - マウント処理に数秒かかる
+
+#### **GitHub直接取得（不採用理由）**
+- **問題**: 
+  - 大容量JSONLファイル（are_you_sure.jsonl: 4,888サンプル）がリポジトリサイズを増大させる
+  - Git履歴にバイナリファイルが含まれてパフォーマンス低下
+- **判断**: データとコードの分離を維持
+
+#### **自動フォールバック戦略**
+1. **プライマリ**: Google Driveからデータセット取得
+2. **セカンダリ**: シンボリックリンク作成
+3. **フォールバック**: 直接ファイルコピー
+4. **エマージェンシー**: サンプルデータ生成（分析テスト用）
+
 ### **問題ライブラリの対策**
 
 #### **triton（最大の問題）**
@@ -150,12 +200,42 @@ INSTALL_STRATEGY = "staged"    # "staged" or "bulk" or "manual"
 timeout=1200,  # 20分 (調整可能)
 ```
 
-## 🚨 トラブルシューティング
+## � データセット準備詳細手順
+
+### **1. Google Driveへのデータセット配置**
+
+1. **Google Driveにアクセス** (drive.google.com)
+2. **フォルダ作成**: `eval_dataset` フォルダを作成
+3. **ファイルアップロード**: 以下のファイルをアップロード
+   - `are_you_sure.jsonl` (4,888サンプル - 必須)
+   - `answer.jsonl` (オプション)
+   - `feedback.jsonl` (オプション) 
+   - `few_shot_examples.jsonl` (オプション)
+
+### **2. ランチャーでの自動検出**
+セル2.5実行時に以下の場所を自動検索：
+```
+/content/drive/MyDrive/eval_dataset/
+/content/drive/MyDrive/research/sae/eval_dataset/
+/content/drive/MyDrive/Colab Notebooks/eval_dataset/
+/content/drive/MyDrive/sae/eval_dataset/
+```
+
+### **3. 手動配置（自動検出失敗時）**
+```python
+# 手動でパスを指定する場合
+dataset_path = "/content/drive/MyDrive/YOUR_CUSTOM_PATH/eval_dataset"
+# セル2.5の possible_dataset_paths に追加
+```
+
+## �🚨 トラブルシューティング
 
 ### **よくある問題と解決策**
 
 | 問題 | 症状 | 解決策 |
 |------|------|--------|
+| **データセット未発見** | "データセットが見つかりません" | Google Driveのパス確認とファイル配置 |
+| **Google認証失敗** | "認証エラー" | ブラウザでGoogle認証を完了 |
 | **インストールハングアップ** | pip installが応答しない | セル5: `manual_install_dependencies()` |
 | **メモリ不足** | CUDA out of memory | セル5: `clear_memory()` |
 | **ファイル不足** | ImportError発生 | セル5: `debug_repository_status()` |
