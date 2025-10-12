@@ -33,6 +33,10 @@ Thumbs.db
 .ipynb_checkpoints
 *.ipynb
 
+# exclude specific notebooks from being ignored
+!sycophancy_analysis_notebook.ipynb
+
+
 # Specific notebooks to ignore
 sycophancy_analysis_improved.ipynb
 
