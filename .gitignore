@@ -35,6 +35,7 @@ Thumbs.db
 
 # exclude specific notebooks from being ignored
 !sycophancy_analysis_colab.ipynb
+!launcher_colab.ipynb
 
 
 # Specific notebooks to ignore
