@@ -37,6 +37,7 @@ scikit-learn = ">=1.3.0"
 # 分析に必須のプロット機能 (サーバーでも必要)
 plotly = ">=5.17.0"
 bitsandbytes = {version = "^0.47.0", platform = "linux"}
+google-genai = "^1.49.0"
 
 [tool.poetry.group.server.dependencies]
 # --- サーバー環境専用ライブラリ ---
