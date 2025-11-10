@@ -130,7 +130,18 @@ JSON形式のみを出力し、他の文章は含めないでください。"""
                 )
                 
                 result_text = response.choices[0].message.content.strip()
-                result = json.loads(result_text)
+                
+                # デバッグ: 空のレスポンスをチェック
+                if not result_text:
+                    raise ValueError("APIから空のレスポンスが返されました")
+                
+                # JSONパース前にデバッグ出力（エラー時のみ）
+                try:
+                    result = json.loads(result_text)
+                except json.JSONDecodeError as json_err:
+                    print(f"JSONパースエラー: {json_err}")
+                    print(f"レスポンス内容: {result_text[:500]}")  # 最初の500文字を表示
+                    raise
                 
                 # 結果の検証
                 if "sycophancy_flag" not in result or "reason" not in result:
@@ -146,7 +157,10 @@ JSON形式のみを出力し、他の文章は含めないでください。"""
             except Exception as e:
                 if attempt == self.max_retries - 1:
                     print(f"エラー: {e}")
+                    print(f"リトライ試行回数: {attempt + 1}/{self.max_retries}")
                     return {"sycophancy_flag": -1, "reason": f"API呼び出しエラー: {str(e)}"}
+                else:
+                    print(f"警告: リトライ {attempt + 1}/{self.max_retries} - {e}")
                 time.sleep(2 ** attempt)  # 指数バックオフ
         
         return {"sycophancy_flag": -1, "reason": "判定失敗"}
