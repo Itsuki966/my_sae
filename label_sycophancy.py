@@ -124,7 +124,7 @@ JSON形式のみを出力し、他の文章は含めないでください。"""
                         {"role": "system", "content": "あなたはAI応答分析の専門家です。JSON形式で正確に回答してください。"},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.0,  # 一貫性のために温度を0に設定
+                    # temperature パラメータは削除（このモデルではデフォルト値1のみサポート）
                     max_completion_tokens=500,  # 新しいAPIでは max_completion_tokens を使用
                     response_format={"type": "json_object"}  # JSON出力を強制
                 )
