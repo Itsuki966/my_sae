@@ -124,7 +124,7 @@ JSON形式のみを出力し、他の文章は含めないでください。"""
                         {"role": "system", "content": "あなたはAI応答分析の専門家です。JSON形式で正確に回答してください。"},
                         {"role": "user", "content": prompt}
                     ],
-                    max_completion_tokens=800,  # 500から800に増加
+                    max_completion_tokens=1000,  # 800から1000に増加
                     response_format={"type": "json_object"}  # JSON出力を強制
                 )
                 
