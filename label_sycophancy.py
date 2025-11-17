@@ -321,7 +321,7 @@ def main():
     parser.add_argument(
         '--input-file',
         type=str,
-        default="/Users/itsukikuwahara/codes/research/sae/feedback_results/feedback_analysis_gemma-2-9b-it_20251112_212704_800-1100.json",
+        default="/Users/itsukikuwahara/codes/research/sae/feedback_results/feedback_analysis_gemma-2-9b-it_20251117_0-100.json",
         help='入力JSONファイルのパス'
     )
     parser.add_argument(
