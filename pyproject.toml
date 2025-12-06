@@ -39,6 +39,7 @@ plotly = ">=5.17.0"
 bitsandbytes = {version = "^0.47.0", platform = "linux"}
 google-genai = "^1.49.0"
 openai = "^2.7.1"
+scipy = "^1.16.3"
 
 [tool.poetry.group.server.dependencies]
 # --- サーバー環境専用ライブラリ ---
