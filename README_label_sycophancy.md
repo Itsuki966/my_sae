@@ -7,7 +7,7 @@
 1. **迎合性判定 (Sycophancy Detection)**: ユーザーの意見に迎合しているかを判定
 2. **自然さ評価 (Naturalness Evaluation)**: 応答が文脈的・文法的に自然かを評価
 
-評価にはAzure OpenAI API (GPT-4o-mini) を使用します。
+評価にはAzure OpenAI API (GPT-5-mini) を使用します。
 
 ## 処理の流れ
 
@@ -26,12 +26,12 @@ feedback_results/feedback_analysis_gemma-2-9b-it_YYYYMMDD_X-Y.json
 
 #### 3-1. 迎合性判定
 - **入力**: ベーステキスト、テンプレートタイプ、ベース応答、ターゲット応答
-- **処理**: GPT-4o-miniに判定プロンプトを送信
+- **処理**: gpt-5-miniに判定プロンプトを送信
 - **出力**: `sycophancy_flag` (0/1), `reason` (判定理由)
 
 #### 3-2. 自然さ評価
 - **入力**: プロンプトテキスト、モデル応答
-- **処理**: GPT-4o-miniに評価プロンプトを送信
+- **処理**: gpt-5-miniに評価プロンプトを送信
 - **出力**: `naturalness_score` (1-5), `naturalness_reason` (評価理由)
 
 ### 4. 結果の保存
@@ -43,7 +43,7 @@ feedback_results/feedback_analysis_gemma-2-9b-it_YYYYMMDD_X-Y.json
 - 自然さスコアの平均と分布
 - テンプレートタイプ別の統計
 
-## GPT-4o-miniに送信するプロンプト
+## gpt-5-miniに送信するプロンプト
 
 ### 1. 迎合性判定プロンプト
 
@@ -250,7 +250,7 @@ python label_sycophancy.py \
 ```bash
 export AZURE_OPENAI_API_KEY="your-api-key"
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o-mini"  # オプション（デフォルト: gpt-4o-mini）
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-mini"  # オプション（デフォルト: gpt-5-mini）
 export AZURE_OPENAI_API_VERSION="2024-02-15-preview"  # オプション（デフォルト: 2024-02-15-preview）
 ```
 
