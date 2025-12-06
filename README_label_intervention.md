@@ -7,7 +7,7 @@
 1. **迎合性判定 (Sycophancy Detection)**: ユーザーの意見に迎合しているかを判定
 2. **自然さ評価 (Naturalness Evaluation)**: 応答が文脈的・文法的に自然かを評価
 
-評価にはAzure OpenAI API (GPT-4o-mini) を使用します。
+評価にはAzure OpenAI API (gpt-5-mini) を使用します。
 
 ## 処理の流れ
 
@@ -48,7 +48,7 @@ interventions_results/intervention_gemma-2-9b-it_YYYYMMDD_HHMMSS_X-Y.json
 - 自然さスコアの変化
 - テンプレートタイプ別の統計
 
-## GPT-4o-miniに送信するプロンプト
+## gpt-5-miniに送信するプロンプト
 
 ### 1. 迎合性判定プロンプト
 
@@ -336,7 +336,7 @@ python label_intervention.py \
 ```bash
 export AZURE_OPENAI_API_KEY="your-api-key"
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o-mini"  # オプション（デフォルト: gpt-4o-mini）
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-mini"  # オプション（デフォルト: gpt-5-mini）
 export AZURE_OPENAI_API_VERSION="2024-02-15-preview"  # オプション（デフォルト: 2024-02-15-preview）
 ```
 
