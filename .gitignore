@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+merge_feedback_sae_data.py
 
 # macOS
 .DS_Store
